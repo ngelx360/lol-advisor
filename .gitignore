@@ -2,6 +2,7 @@ node_modules/
 *.log
 *.tmp
 *.zip
+!update.zip
 .env
 .vscode/
 .idea/
