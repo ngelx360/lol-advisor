@@ -1,8 +1,8 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "patch": "16.22",
-  "title": "LoL Advisor v2.2.0",
-  "changelog": "Posible Rival en draft, recuadro de counters con resplandor verde Hextech y resumen táctico del equipo en partida (ganks, rotaciones y tendencias de línea).",
+  "title": "LoL Advisor v2.2.1",
+  "changelog": "Rediseño de Draft & Picks idéntico a OP.GG (pestañas Todos/Superior/Jungla/Central/Inferior/Apoyo, ranking por Nivel y WinRate, filtro de solo ADCs puros en Inferior, y columna Débil contra con 3 counters).",
   "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
   "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
 }

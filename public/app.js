@@ -6,6 +6,35 @@ const ROLE_LABELS = {
   support: 'Support'
 };
 
+const LANE_SPANISH_LABELS = {
+  all: 'Todos',
+  top: 'Superior',
+  jungle: 'Jungla',
+  mid: 'Central',
+  adc: 'Inferior',
+  support: 'Apoyo'
+};
+
+function getRoleSvgIcon(role) {
+  const r = String(role || '').toLowerCase();
+  if (r === 'top') {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h10v4H7v6H3V3z"/><rect x="13" y="13" width="8" height="8" rx="1" opacity="0.25"/></svg>`;
+  }
+  if (r === 'jungle') {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.5 5.5 6 10 6 14.5 6 18.1 8.7 21 12 21s6-2.9 6-6.5C18 10 15.5 5.5 12 2zm0 16c-1.7 0-3-1.3-3-3 0-2 1.3-4.8 3-7 1.7 2.2 3 5 3 7 0 1.7-1.3 3-3 3z"/></svg>`;
+  }
+  if (r === 'mid') {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><rect x="3" y="3" width="6" height="6" rx="1" opacity="0.25"/><rect x="15" y="15" width="6" height="6" rx="1" opacity="0.25"/></svg>`;
+  }
+  if (r === 'adc' || r === 'bottom') {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 17h6v-6h4v10H11v-4z"/><rect x="3" y="3" width="8" height="8" rx="1" opacity="0.25"/></svg>`;
+  }
+  if (r === 'support') {
+    return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.5C4 16.5 7.4 21 12 22c4.6-1 8-5.5 8-10.5V5l-8-3zm0 3.2l5 1.9v4.9c0 3.7-2.3 7-5 7.9-2.7-.9-5-4.2-5-7.9V7.1l5-1.9z"/><circle cx="12" cy="11.5" r="2.2"/></svg>`;
+  }
+  return '';
+}
+
 const state = {
   config: null,
   activeSeason: null,
@@ -31,6 +60,7 @@ const state = {
   manualModeChosen: false,
 
   mode: 'patch_wr', // 'lane_1v1' | 'counter_wr' | 'synergy' | 'patch_wr' | 'global'
+  opggLane: 'all',
   onlyPool: false,
   searchQuery: '',
   poolSearchQuery: '',
@@ -264,6 +294,7 @@ async function pollLcu() {
 
       if (lcu.myRole && lcu.myRole !== state.draft.myRole) {
         state.draft.myRole = lcu.myRole;
+        state.opggLane = lcu.myRole;
         draftChanged = true;
       }
 
@@ -500,15 +531,14 @@ function renderDraftControls() {
 
   extraRow.classList.toggle('hidden', !otherEnemies.length && !state.draft.bans?.length);
 
-  // Mode pills active state
-  const poolCount = state.config?.myPool?.length || 0;
-  const poolTabBtn = document.getElementById('myPoolModeTab');
-  if (poolTabBtn) {
-    poolTabBtn.textContent = poolCount > 0 ? `Solo Mi Pool (${poolCount})` : 'Solo Mi Pool';
-  }
-  document.querySelectorAll('#modePills .mode-pill').forEach((btn) => {
-    btn.classList.toggle('on', btn.dataset.mode === state.mode);
+  // Sync OP.GG Lane Tabs & Only Pool toggle
+  document.querySelectorAll('#opggLaneTabs .opgg-tab').forEach((tab) => {
+    tab.classList.toggle('on', tab.dataset.lane === (state.opggLane || 'all'));
   });
+  const poolToggle = document.getElementById('onlyPoolToggle');
+  if (poolToggle) {
+    poolToggle.checked = Boolean(state.onlyPool);
+  }
 
   // Context banner
   const banner = document.getElementById('draftContextBanner');
@@ -656,14 +686,14 @@ async function refreshRecommendations() {
       headers: { 'Content-Type': 'application/json' },
       signal: recAbortController.signal,
       body: JSON.stringify({
-        myRole: state.draft.myRole,
+        myRole: state.opggLane || 'all',
         enemyLanerId: state.draft.enemyLanerId,
         allies: state.draft.allies,
         enemies: state.draft.enemies,
         bans: state.draft.bans,
         myChampionId: state.draft.myChampionId,
         onlyPool: state.onlyPool,
-        mode: state.mode
+        mode: 'patch_wr'
       })
     });
     const data = await res.json();
@@ -735,73 +765,88 @@ function renderPrimaryMetric(row, mode) {
 
 function renderRecommendationsList() {
   const listEl = document.getElementById('candidatesList');
-  const colLabel = document.getElementById('colPrimaryLabel');
+  if (!listEl) return;
   const data = state.recommendations;
   if (!data || !data.candidates) return;
 
-  colLabel.textContent = getPrimaryColumnLabel(state.mode);
   const q = state.searchQuery.trim().toLowerCase();
-  const filtered = q
-    ? data.candidates.filter((c) => c.name.toLowerCase().includes(q) || c.enName.toLowerCase().includes(q))
-    : data.candidates;
+  let list = data.candidates;
 
-  if (!filtered.length) {
-    if (state.mode === 'my_pool') {
+  if (state.onlyPool) {
+    list = list.filter((c) => c.inPool);
+  }
+
+  if (q) {
+    list = list.filter(
+      (c) =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.enName && c.enName.toLowerCase().includes(q))
+    );
+  }
+
+  if (!list.length) {
+    if (state.onlyPool) {
       listEl.innerHTML = `<div class="loading-state">
-        <p style="margin-bottom:10px;">No tienes campeones en <strong>Mi Pool</strong> para ${esc(ROLE_LABELS[state.draft.myRole] || state.draft.myRole)}.</p>
-        <p class="metric-sub" style="margin-bottom:12px;">Marca campeones con <strong>★</strong> en cualquier modo o agrégalos desde Seasons &amp; Datos.</p>
-        <button class="ghost on" onclick="switchView('database')">Configurar Mi Pool</button>
+        <p style="margin-bottom:10px;">No tienes campeones en <strong>Mi Pool</strong> para ${esc(LANE_SPANISH_LABELS[state.opggLane] || state.opggLane || 'esta línea')}.</p>
+        <p class="metric-sub" style="margin-bottom:12px;">Marca campeones con <strong>★</strong> en la lista o agrégalos en el panel de Mi Champion Pool.</p>
       </div>`;
     } else {
-      listEl.innerHTML = `<div class="loading-state">No hay campeones que coincidan con el filtro actual.</div>`;
+      listEl.innerHTML = `<div class="loading-state">No hay campeones que coincidan con la búsqueda.</div>`;
     }
     return;
   }
 
-  listEl.innerHTML = filtered
-    .map((row, idx) => {
+  listEl.innerHTML = list
+    .map((row) => {
       const isSelected = state.selectedPreviewId === row.championId;
-      const posCls = idx === 0 ? 'p1' : idx === 1 ? 'p2' : idx === 2 ? 'p3' : '';
-      return `<div class="cand-row ${isSelected ? 'selected' : ''}" data-cand-id="${row.championId}">
-        <span class="rpos ${posCls}">${idx + 1}</span>
-        <div class="cand-champ-cell">
-          <img class="cand-icon" src="${esc(row.iconUrl)}" alt="${esc(row.name)}" />
-          <div class="cand-name-wrap">
-            <div class="cand-name-line">
-              <span>${esc(row.name)}</span>
-              <button class="star-btn ${row.inPool ? 'active' : ''}" data-toggle-pool="${row.championId}" title="Agregar/quitar de Mi Pool">★</button>
-            </div>
-            <div class="cand-sub-line">
-              <span class="tier-badge tier-${row.tier}">Tier ${esc(row.tierLabel)}</span>
-              ${row.matchup?.soloKillAdvantage === 'me' && state.mode !== 'lane_1v1' ? '<span class="adv-tag adv-me">1v1 Favor</span>' : ''}
-            </div>
-          </div>
+      const rankNum = row.displayRank || row.rank || '-';
+      const tierNum = row.tier || 1;
+      const curLane = row.lane || row.role || 'all';
+      const roleSvg = getRoleSvgIcon(curLane);
+      const roleTitle = row.laneLabel || LANE_SPANISH_LABELS[curLane] || curLane;
+      const wrPercent = (Number(row.winRate || 0) * 100).toFixed(2);
+      const pickPercent = (Number(row.pickRate || 0) * 100).toFixed(2);
+      const banPercent = (Number(row.banRate || 0) * 100).toFixed(2);
+
+      const countersHtml = (row.counters || [])
+        .map((cnt) => {
+          const cWr = (Number(cnt.winRate || 0) * 100).toFixed(1);
+          return `<img class="opgg-counter-mini" src="${esc(cnt.iconUrl)}" alt="${esc(cnt.name)}" title="Débil contra ${esc(cnt.name)} (${cWr}% WR)" />`;
+        })
+        .join('');
+
+      return `<div class="opgg-row ${isSelected ? 'selected' : ''}" data-cand-id="${row.championId}">
+        <span class="opgg-rank-col">${rankNum}</span>
+        <div class="opgg-champ-cell">
+          <img class="opgg-champ-icon" src="${esc(row.iconUrl)}" alt="${esc(row.name)}" />
+          <span class="opgg-champ-name" title="${esc(row.name)}">${esc(row.name)}</span>
+          <button class="star-btn ${row.inPool ? 'active' : ''}" data-toggle-pool="${row.championId}" title="Agregar/quitar de Mi Pool">★</button>
         </div>
-        <div>${renderPrimaryMetric(row, state.mode)}</div>
         <div>
-          <div class="metric-main ${wrClass(row.winRate)}">${pct(row.winRate, 1)}</div>
-          <div class="metric-sub">${(row.play || 0).toLocaleString()}</div>
+          <div class="opgg-tier-ribbon tier-${tierNum}">${tierNum}</div>
         </div>
         <div>
-          <div class="metric-sub">Pick ${pct(row.pickRate, 1)}</div>
-          <div class="metric-sub">Ban ${pct(row.banRate, 1)}</div>
+          <span class="opgg-role-badge" title="${esc(roleTitle)}">${roleSvg}</span>
         </div>
-        <div class="cand-actions-cell">
-          <button class="ghost pick-choose-btn" data-choose-my-champ="${row.championId}">Elegir</button>
-        </div>
+        <div class="opgg-val-wr ${wrClass(row.winRate)}">${wrPercent}%</div>
+        <div class="opgg-val-sub">${pickPercent}%</div>
+        <div class="opgg-val-sub">${banPercent}%</div>
+        <div class="opgg-counters-row">${countersHtml || '<span class="muted" style="font-size:11px;">—</span>'}</div>
       </div>`;
     })
     .join('');
 
   // Auto-select top #1 in preview if nothing selected or previous vanished
-  if (!state.selectedPreviewId || !filtered.some((c) => c.championId === state.selectedPreviewId)) {
-    selectPreviewChampion(filtered[0].championId);
+  if (!state.selectedPreviewId || !list.some((c) => c.championId === state.selectedPreviewId)) {
+    if (list[0]) {
+      selectPreviewChampion(list[0].championId);
+    }
   }
 }
 
 async function selectPreviewChampion(championId) {
   state.selectedPreviewId = championId;
-  document.querySelectorAll('.cand-row').forEach((r) => {
+  document.querySelectorAll('.opgg-row, .cand-row').forEach((r) => {
     r.classList.toggle('selected', Number(r.dataset.candId) === championId);
   });
   document.querySelectorAll('.counter-card').forEach((c) => {
@@ -1574,6 +1619,13 @@ function bindEvents() {
     const btn = e.target.closest('.role-pill');
     if (!btn) return;
     state.draft.myRole = btn.dataset.role;
+    state.opggLane = btn.dataset.role;
+    const opggTabs = document.getElementById('opggLaneTabs');
+    if (opggTabs) {
+      opggTabs.querySelectorAll('.opgg-tab').forEach((t) => {
+        t.classList.toggle('on', t.dataset.lane === state.opggLane);
+      });
+    }
     renderDraftControls();
     refreshRecommendations();
     if (state.draft.myChampionId) loadMyChampionTab(state.draft.myChampionId);
@@ -1617,15 +1669,24 @@ function bindEvents() {
     selectEnemyLaner(Number(btn.dataset.promoteEnemy));
   });
 
-  // Mode pills
-  document.getElementById('modePills').addEventListener('click', (e) => {
-    const btn = e.target.closest('.mode-pill');
-    if (!btn) return;
-    state.mode = btn.dataset.mode;
-    state.manualModeChosen = true;
-    renderDraftControls();
-    refreshRecommendations();
-  });
+  // OP.GG Lane Tabs
+  const opggTabs = document.getElementById('opggLaneTabs');
+  if (opggTabs) {
+    opggTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.opgg-tab');
+      if (!tab) return;
+      opggTabs.querySelectorAll('.opgg-tab').forEach((t) => t.classList.remove('on'));
+      tab.classList.add('on');
+      state.opggLane = tab.dataset.lane || 'all';
+      if (state.opggLane !== 'all') {
+        state.draft.myRole = state.opggLane;
+        document.querySelectorAll('#roleSelector .role-pill').forEach((btn) => {
+          btn.classList.toggle('on', btn.dataset.role === state.draft.myRole);
+        });
+      }
+      refreshRecommendations();
+    });
+  }
 
   // Candidate search
   document.getElementById('candidateSearchInput').addEventListener('input', (e) => {
@@ -1649,9 +1710,19 @@ function bindEvents() {
       return;
     }
 
-    const row = e.target.closest('.cand-row');
+    const row = e.target.closest('.opgg-row, .cand-row');
     if (row) {
       selectPreviewChampion(Number(row.dataset.candId));
+    }
+  });
+
+  // Double click row to fix as my champion
+  document.getElementById('candidatesList').addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.opgg-row, .cand-row');
+    if (!row) return;
+    const cid = Number(row.dataset.candId);
+    if (cid) {
+      chooseMyChampion(cid, true);
     }
   });
 

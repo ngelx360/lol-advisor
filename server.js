@@ -19,7 +19,7 @@ const discordClient = require('./lib/discordTournamentClient');
 const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.0';
+const APP_BUILD = '2.2.1';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';

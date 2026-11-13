@@ -162,10 +162,6 @@
           </div>
 
           <div class="draft-actions">
-            <label class="toggle-chip" title="Mostrar solo campeones de tu Champion Pool">
-              <input type="checkbox" id="onlyPoolToggle" />
-              <span>Solo Mi Pool</span>
-            </label>
             <button id="resetDraftBtn" class="ghost" title="Limpiar draft manual">Limpiar</button>
           </div>
         </div>
@@ -185,42 +181,48 @@
         <!-- Context Banner -->
         <div id="draftContextBanner" class="rbanner ok">
           <div class="rbanner-info">
-            <div class="rbanner-sub" id="contextBannerText">Cargando datos del parche...</div>
+            <div class="rbanner-sub" id="contextBannerText">Tier List Oficial OP.GG · Clasificatoria Solo/Duo</div>
           </div>
         </div>
 
         <!-- Top Counters vs Selected Enemy Laner -->
         <div id="enemyCountersStrip" class="panel enemy-counters-strip hidden"></div>
 
-        <!-- 5 Mode Switcher Pills + Search -->
-        <div class="toolbar-row">
-          <div class="mode-pills" id="modePills">
-            <button class="ghost mode-pill" data-mode="lane_1v1">Mejor 1v1 en Línea</button>
-            <button class="ghost mode-pill" data-mode="counter_wr">Mejor WR vs Rival</button>
-            <button class="ghost mode-pill" data-mode="synergy">Mejor Sinergia</button>
-            <button class="ghost mode-pill" data-mode="patch_wr">Mejor WR Parche</button>
-            <button class="ghost mode-pill" data-mode="my_pool" id="myPoolModeTab">Solo Mi Pool</button>
-            <button class="ghost mode-pill on" data-mode="global">Score Global</button>
+        <!-- OP.GG Lane Tabs + Search Toolbar -->
+        <div class="toolbar-row opgg-toolbar">
+          <div class="opgg-lane-tabs" id="opggLaneTabs">
+            <button class="opgg-tab on" data-lane="all">Todos</button>
+            <button class="opgg-tab" data-lane="top">Superior</button>
+            <button class="opgg-tab" data-lane="jungle">Jungla</button>
+            <button class="opgg-tab" data-lane="mid">Central</button>
+            <button class="opgg-tab" data-lane="adc">Inferior</button>
+            <button class="opgg-tab" data-lane="support">Apoyo</button>
           </div>
 
           <div class="toolbar-right">
+            <label class="toggle-chip" title="Mostrar solo campeones de tu Champion Pool">
+              <input type="checkbox" id="onlyPoolToggle" />
+              <span>Solo Mi Pool</span>
+            </label>
             <input type="search" id="candidateSearchInput" class="search-input" placeholder="Buscar campeón..." />
           </div>
         </div>
 
-        <!-- Split Panel: Ranked Table + Build Preview -->
+        <!-- Split Panel: OP.GG Tier List Table + Build Preview -->
         <div class="draft-grid">
           <div class="panel candidates-panel">
-            <div class="table-header">
+            <div class="table-header opgg-table-header">
               <span class="col-rank">#</span>
               <span class="col-champ">Campeón</span>
-              <span class="col-primary" id="colPrimaryLabel">Score / Matchup</span>
-              <span class="col-patch">WR Parche</span>
-              <span class="col-extra">Pick / Ban</span>
-              <span class="col-act"></span>
+              <span class="col-tier">Nivel</span>
+              <span class="col-role">Rol</span>
+              <span class="col-wr">WinRate</span>
+              <span class="col-pick">Tasa de selección</span>
+              <span class="col-ban">Tasa de baneo</span>
+              <span class="col-counters">Débil contra</span>
             </div>
             <div id="candidatesList" class="candidates-list">
-              <div class="loading-state">Cargando recomendaciones...</div>
+              <div class="loading-state">Cargando Tier List de OP.GG...</div>
             </div>
           </div>
 
