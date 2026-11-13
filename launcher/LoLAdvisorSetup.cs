@@ -15,7 +15,7 @@ namespace LoLAdvisorSetup
     internal static class Program
     {
         private const string AppName = "LoL Ranked Advisor";
-        private const string AppVersion = "2.1.0";
+        private const string AppVersion = "2.2.1";
         private const string NodeZipUrl = "https://nodejs.org/dist/v22.15.0/node-v22.15.0-win-x64.zip";
         private const string ResourceName = "LoLAdvisorPayload.zip";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\LoLRankedAdvisor";

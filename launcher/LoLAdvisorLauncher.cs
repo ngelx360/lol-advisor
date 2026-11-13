@@ -11,7 +11,6 @@ namespace LoLAdvisorLauncher
     internal static class Program
     {
         private const string BaseUrl = "http://127.0.0.1:3848";
-        private const string ExpectedBuild = "2.1.0";
 
         [STAThread]
         private static void Main()
@@ -36,12 +35,13 @@ namespace LoLAdvisorLauncher
 
             try
             {
-                int aliveState = CheckServerState(); // 0 = not running, 1 = current build, 2 = outdated build
-                if (aliveState != 1)
+                string expectedBuild = GetExpectedBuild(appDir);
+                int aliveState = CheckServerState(expectedBuild); // 0 = not running, 1 = current build, 2 = outdated build
+                if (aliveState == 2)
                 {
                     StopOutdatedServerOnPort3848();
-                    Thread.Sleep(300);
-                    aliveState = CheckServerState();
+                    Thread.Sleep(400);
+                    aliveState = CheckServerState(expectedBuild);
                 }
 
                 if (aliveState == 0)
@@ -73,14 +73,14 @@ namespace LoLAdvisorLauncher
                     bool ready = false;
                     for (int i = 0; i < 40; i++)
                     {
-                        if (CheckServerState() == 1)
+                        if (CheckServerState(expectedBuild) == 1)
                         {
                             ready = true;
                             break;
                         }
                         if (serverProc != null && serverProc.HasExited)
                         {
-                            if (CheckServerState() == 1)
+                            if (CheckServerState(expectedBuild) == 1 || CheckServerState(null) == 1)
                             {
                                 ready = true;
                                 break;
@@ -88,6 +88,11 @@ namespace LoLAdvisorLauncher
                             break;
                         }
                         Thread.Sleep(200);
+                    }
+
+                    if (!ready && CheckServerState(null) == 1)
+                    {
+                        ready = true;
                     }
 
                     if (!ready)
@@ -179,7 +184,23 @@ namespace LoLAdvisorLauncher
             }
         }
 
-        private static int CheckServerState()
+        private static string GetExpectedBuild(string appDir)
+        {
+            try
+            {
+                string path = Path.Combine(appDir, "version.json");
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var m = Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
+                    if (m.Success) return m.Groups[1].Value.Trim();
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        private static int CheckServerState(string expectedBuild)
         {
             try
             {
@@ -192,7 +213,9 @@ namespace LoLAdvisorLauncher
                     using (var reader = new StreamReader(resp.GetResponseStream()))
                     {
                         string body = reader.ReadToEnd();
-                        return body.Contains("\"appBuild\":\"" + ExpectedBuild + "\"") ? 1 : 2;
+                        if (!body.Contains("\"ok\":true")) return 0;
+                        if (string.IsNullOrEmpty(expectedBuild)) return 1;
+                        return body.Contains("\"appBuild\":\"" + expectedBuild + "\"") ? 1 : 2;
                     }
                 }
             }
@@ -209,7 +232,9 @@ namespace LoLAdvisorLauncher
                         using (var reader = new StreamReader(resp.GetResponseStream()))
                         {
                             string body = reader.ReadToEnd();
-                            return body.Contains("\"appBuild\":\"" + ExpectedBuild + "\"") ? 1 : 2;
+                            if (!body.Contains("\"activeSeason\"") && !body.Contains("\"champions\"")) return 0;
+                            if (string.IsNullOrEmpty(expectedBuild)) return 1;
+                            return body.Contains("\"appBuild\":\"" + expectedBuild + "\"") ? 1 : 2;
                         }
                     }
                 }
