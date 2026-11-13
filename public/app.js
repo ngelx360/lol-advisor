@@ -149,6 +149,9 @@ function switchView(viewName) {
   document.querySelectorAll('.view').forEach((v) => {
     v.classList.toggle('active', v.id === `view-${viewName}`);
   });
+  if (viewName === 'my-champion' && state.draft.myChampionId) {
+    loadMyChampionTab(state.draft.myChampionId);
+  }
 }
 
 function renderTopBar() {
@@ -182,6 +185,9 @@ function renderTopBar() {
   ind.className = 'dot';
   if (!state.config?.lcuEnabled) {
     txt.textContent = 'Modo Manual';
+  } else if (state.isInGame) {
+    ind.classList.add('in-champ-select');
+    txt.textContent = `En Partida (${state.liveGame?.gameTimeLabel || '0:00'})`;
   } else if (state.lcu.inChampSelect) {
     ind.classList.add('in-champ-select');
     txt.textContent = 'LCU: En Champ Select';
@@ -317,6 +323,61 @@ async function pollLcu() {
         state.lastSeenInChampSelect = false;
         state.lastSeenLcuChampId = null;
       }
+
+      // Live In-Game detection
+      try {
+        const live = await apiJson('/api/live-overlay');
+        if (live && live.inGame) {
+          state.isInGame = true;
+          state.liveGame = live;
+
+          let liveChanged = false;
+          if (live.role && live.role !== state.draft.myRole) {
+            state.draft.myRole = live.role;
+            liveChanged = true;
+          }
+          if (live.myChampion?.id && live.myChampion.id !== state.draft.myChampionId) {
+            state.draft.myChampionId = live.myChampion.id;
+            liveChanged = true;
+          }
+          if (live.opponentChampion?.id && live.opponentChampion.id !== state.draft.enemyLanerId) {
+            state.draft.enemyLanerId = live.opponentChampion.id;
+            liveChanged = true;
+          }
+          if (Array.isArray(live.allies) && live.allies.length) {
+            const alliesKey = JSON.stringify(live.allies);
+            if (alliesKey !== JSON.stringify(state.draft.allies)) {
+              state.draft.allies = live.allies;
+              liveChanged = true;
+            }
+          }
+          if (Array.isArray(live.enemies) && live.enemies.length) {
+            const enemiesKey = JSON.stringify(live.enemies);
+            if (enemiesKey !== JSON.stringify(state.draft.enemies)) {
+              state.draft.enemies = live.enemies;
+              liveChanged = true;
+            }
+          }
+
+          if (!state.lastSeenInGame) {
+            state.lastSeenInGame = true;
+            if (state.config?.autoFocusMyChampTab) {
+              switchView('my-champion');
+            }
+          }
+
+          if (liveChanged && state.draft.myChampionId) {
+            renderDraftControls();
+            await loadMyChampionTab(state.draft.myChampionId);
+          }
+        } else {
+          state.isInGame = false;
+          state.lastSeenInGame = false;
+          state.liveGame = null;
+        }
+      } catch {
+        // Live overlay polling ignored
+      }
     }
 
     renderTopBar();
@@ -413,7 +474,7 @@ function renderDraftControls() {
         const c = state.championsById.get(e.championId);
         if (!c) return '';
         const roleTag = e.inferredRole ? ` · ${ROLE_LABELS[e.inferredRole] || e.inferredRole}` : '';
-        return `<button class="mini-chip" data-promote-enemy="${c.id}" title="Marcar como mi rival de línea">
+        return `<button class="mini-chip" data-promote-enemy="${c.id}" title="Marcar como posible rival">
           <img src="${esc(c.iconUrl)}" alt="" />
           <span>${esc(c.name)}${esc(roleTag)}</span>
         </button>`;
@@ -756,6 +817,8 @@ async function selectPreviewChampion(championId) {
       role: state.draft.myRole
     });
     if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
+    if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
+    if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
     const detail = await apiJson(`/api/champion-build?${qs.toString()}`);
     panel.innerHTML = renderBuildDetailHtml(detail, { compact: true });
   } catch (err) {
@@ -785,6 +848,8 @@ async function loadMyChampionTab(championId) {
       role: state.draft.myRole
     });
     if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
+    if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
+    if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
     const detail = await apiJson(`/api/champion-build?${qs.toString()}`);
     state.myChampionBuildData = detail;
     container.innerHTML = renderBuildDetailHtml(detail, { compact: false });
@@ -942,6 +1007,85 @@ function renderSkillSection(skillMastery, compact) {
   </div>`;
 }
 
+function renderTeamTacticalSummaryHtml(teamBriefing) {
+  if (!teamBriefing) return '';
+
+  const { compStrategy, members, inGame, inChampSelect, gameTimeLabel, hasTeamData } = teamBriefing;
+  const isLive = Boolean(inGame);
+  const statusPill = isLive
+    ? `<span class="tactical-live-pill">● Partida en Vivo ${gameTimeLabel ? `(${esc(gameTimeLabel)})` : ''}</span>`
+    : inChampSelect
+    ? `<span class="tactical-live-pill" style="border-color:rgba(200,170,110,0.5);color:#f1db9a;background:rgba(200,170,110,0.15);">● Selección de Campeón</span>`
+    : `<span class="tactical-live-pill" style="border-color:rgba(63,208,212,0.4);color:#8df8fb;background:rgba(63,208,212,0.1);">Lectura de Equipo</span>`;
+
+  const strategyHtml = compStrategy
+    ? `<div class="tactical-comp-strategy">
+        <div class="tactical-strategy-body">
+          <div class="tactical-strategy-title">
+            <span>${esc(compStrategy.title)}</span>
+            <span class="tactical-archetype-badge emerald" style="margin-left:6px;font-size:10.5px;">${esc(compStrategy.badge)}</span>
+          </div>
+          <div class="tactical-strategy-plan">${esc(compStrategy.plan)}</div>
+        </div>
+      </div>`
+    : '';
+
+  const membersHtml = (members || [])
+    .map((m) => {
+      const isMe = m.isMe;
+      const champ = m.champion;
+      const iconHtml = champ?.iconUrl
+        ? `<img class="tactical-champ-icon" src="${esc(champ.iconUrl)}" alt="${esc(champ.name)}" />`
+        : `<div class="tactical-champ-empty-icon">?</div>`;
+
+      const laneTendencyHtml = m.laneTendency
+        ? `<div class="tactical-lane-tendency ${esc(m.laneTendency.badgeColor || 'blue')}">
+            <span>${esc(m.laneTendency.text)}</span>
+          </div>`
+        : '';
+
+      return `<div class="tactical-role-card ${isMe ? 'is-me' : ''}">
+        <div>
+          <div class="tactical-role-header">
+            ${iconHtml}
+            <div class="tactical-role-names">
+              <div class="tactical-role-tagline">
+                <span>${esc(m.roleLabel)}</span>
+                ${isMe ? '<span class="tactical-me-badge">TÚ</span>' : ''}
+              </div>
+              <div class="tactical-champ-name">${esc(champ?.name || 'Por seleccionar')}</div>
+            </div>
+          </div>
+          <div style="margin-top:8px;margin-bottom:6px;">
+            <span class="tactical-archetype-badge ${esc(m.badgeColor || 'neutral')}">${esc(m.archetype)}</span>
+          </div>
+          <div class="tactical-behavior-text">${esc(m.behavior)}</div>
+        </div>
+        ${laneTendencyHtml}
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="panel team-tactical-card">
+      <div class="tactical-header-row">
+        <div class="tactical-title-group">
+          <h2 class="tactical-main-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--hex);"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            Resumen Táctico de tu Equipo
+          </h2>
+          ${statusPill}
+        </div>
+        <span class="muted" style="font-size:12px;">Lectura de ganks, rotaciones y tendencias de línea</span>
+      </div>
+      ${strategyHtml}
+      <div class="tactical-grid">
+        ${membersHtml}
+      </div>
+    </div>
+  `;
+}
+
 function renderBuildDetailHtml(detail, { compact }) {
   const { champion, role, stats, matchup, build, hardMatchups, goodMatchups, patch } = detail;
   const spellsGroup = build?.summonerSpells?.[0];
@@ -1025,6 +1169,8 @@ function renderBuildDetailHtml(detail, { compact }) {
     </div>
 
     ${matchupBlock}
+
+    ${renderTeamTacticalSummaryHtml(detail.teamBriefing)}
 
     <div class="my-champ-two-col">
       <div class="panel my-champ-card">
@@ -1279,7 +1425,7 @@ async function startSeasonSync() {
 function openChampionPicker(context) {
   state.pickerContext = context;
   const titles = {
-    enemyLaner: `Elegir Rival de Línea (${ROLE_LABELS[state.draft.myRole]})`,
+    enemyLaner: `Elegir Posible Rival (${ROLE_LABELS[state.draft.myRole]})`,
     ally: 'Elegir Campeón Aliado',
     myChampion: 'Elegir Tu Campeón'
   };

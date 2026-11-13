@@ -16,9 +16,10 @@ const liveOverlay = require('./lib/liveOverlay');
 const tournamentEngine = require('./lib/tournamentEngine');
 const roadToEngine = require('./lib/roadToEngine');
 const discordClient = require('./lib/discordTournamentClient');
+const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.1.0';
+const APP_BUILD = '2.2.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -617,6 +618,28 @@ async function handleApi(req, res, urlObj) {
 
     const opponentMeta = opponentId ? activeSeason.champions[opponentId] || null : null;
 
+    let allies = null;
+    let enemies = null;
+    if (urlObj.searchParams.get('allies')) {
+      try { allies = JSON.parse(urlObj.searchParams.get('allies')); } catch {}
+    }
+    if (urlObj.searchParams.get('enemies')) {
+      try { enemies = JSON.parse(urlObj.searchParams.get('enemies')); } catch {}
+    }
+
+    let teamBriefing = null;
+    try {
+      teamBriefing = tacticalAnalyzer.analyzeTeamBriefing({
+        seasonData: activeSeason,
+        myRole: activeRole,
+        myChampionId: championId,
+        allies: allies || [],
+        enemies: enemies || (opponentId ? [{ championId: opponentId, role: activeRole }] : [])
+      });
+    } catch {
+      teamBriefing = null;
+    }
+
     return sendJson(res, 200, {
       patch: activeSeason.patch,
       champion: champ,
@@ -652,7 +675,79 @@ async function handleApi(req, res, urlObj) {
         : null,
       build: hydratedBuild,
       hardMatchups,
-      goodMatchups
+      goodMatchups,
+      teamBriefing
+    });
+  }
+
+  if ((req.method === 'GET' || req.method === 'POST') && pathname === '/api/team-tactical-briefing') {
+    const activeSeason = syncEngine.getActiveSeasonData();
+    if (!activeSeason) {
+      return sendJson(res, 404, { error: 'Temporada no disponible' });
+    }
+
+    let body = {};
+    if (req.method === 'POST') {
+      body = await readRequestBody(req).catch(() => ({}));
+    }
+
+    let myRole = body.myRole || urlObj.searchParams.get('myRole') || null;
+    let myChampionId = Number(body.myChampionId || urlObj.searchParams.get('myChampionId')) || null;
+    let allies = Array.isArray(body.allies) ? body.allies : null;
+    let enemies = Array.isArray(body.enemies) ? body.enemies : null;
+
+    if (!allies && urlObj.searchParams.get('allies')) {
+      try { allies = JSON.parse(urlObj.searchParams.get('allies')); } catch {}
+    }
+    if (!enemies && urlObj.searchParams.get('enemies')) {
+      try { enemies = JSON.parse(urlObj.searchParams.get('enemies')); } catch {}
+    }
+
+    // Auto-detect from active live game or LCU if missing
+    let liveState = null;
+    try {
+      liveState = await liveOverlay.getLiveOverlayState();
+    } catch {}
+
+    let lcuState = null;
+    if (!liveState?.inGame) {
+      try {
+        const config = syncEngine.loadConfig();
+        lcuState = await lcuWatcher.readLcuChampSelectState({
+          enabled: config.lcuEnabled,
+          customLockfilePath: config.lcuLockfilePath,
+          seasonData: activeSeason
+        });
+      } catch {}
+    }
+
+    if (liveState?.inGame) {
+      if (!myRole) myRole = liveState.role;
+      if (!myChampionId && liveState.myChampion?.id) myChampionId = liveState.myChampion.id;
+      if ((!allies || !allies.length) && liveState.allies?.length) allies = liveState.allies;
+      if ((!enemies || !enemies.length) && liveState.enemies?.length) enemies = liveState.enemies;
+    } else if (lcuState?.inChampSelect) {
+      if (!myRole) myRole = lcuState.myRole;
+      if (!myChampionId && lcuState.myChampionId) myChampionId = lcuState.myChampionId;
+      if ((!allies || !allies.length) && lcuState.allies?.length) allies = lcuState.allies;
+      if ((!enemies || !enemies.length) && lcuState.inferredEnemies?.length) enemies = lcuState.inferredEnemies;
+    }
+
+    const briefing = tacticalAnalyzer.analyzeTeamBriefing({
+      seasonData: activeSeason,
+      myRole: myRole || 'mid',
+      myChampionId,
+      allies: allies || [],
+      enemies: enemies || []
+    });
+
+    return sendJson(res, 200, {
+      ...briefing,
+      inGame: Boolean(liveState?.inGame),
+      inChampSelect: Boolean(lcuState?.inChampSelect),
+      gameTimeLabel: liveState?.gameTimeLabel || null,
+      myRole: myRole || 'mid',
+      myChampionId
     });
   }
 

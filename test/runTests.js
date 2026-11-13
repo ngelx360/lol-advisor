@@ -140,12 +140,12 @@ async function runHttpIntegrationTests() {
     // 0. Health check
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
     assert.strictEqual(health.ok, true);
-    assert.strictEqual(health.appBuild, '2.1.0');
+    assert.strictEqual(health.appBuild, '2.2.0');
 
     // 0b. Cloud Auto-Update check
     const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
     assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
-    assert.strictEqual(updateCheck.currentVersion, '2.1.0');
+    assert.strictEqual(updateCheck.currentVersion, '2.2.0');
 
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());
@@ -243,6 +243,33 @@ async function runHttpIntegrationTests() {
     assert.strictEqual(nunuBuild.champion.id, 20);
     assert(nunuBuild.build && nunuBuild.build.runes.length > 0, 'Nunu fallback must have runes');
     assert(nunuBuild.build.coreItems.length > 0, 'Nunu fallback must have core items');
+
+    // 6d. Team Tactical Briefing endpoint & champion-build integration
+    assert(build.teamBriefing, 'Champion build must include teamBriefing');
+    const briefingRes = await fetch(`${baseUrl}/api/team-tactical-briefing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        myRole: 'mid',
+        myChampionId: 103,
+        allies: [
+          { role: 'jungle', championId: 64 },
+          { role: 'top', championId: 2 },
+          { role: 'adc', championId: 222 },
+          { role: 'support', championId: 412 }
+        ],
+        enemies: [
+          { role: 'top', championId: 266 },
+          { role: 'mid', championId: 238 }
+        ]
+      })
+    }).then((r) => r.json());
+    assert(briefingRes.compStrategy?.title, 'Briefing must have compStrategy title');
+    assert.strictEqual(briefingRes.members.length, 5, 'Briefing must return all 5 roles');
+    const jgCard = briefingRes.members.find((m) => m.role === 'jungle');
+    assert(jgCard.archetype.includes('Ganker'), 'Lee Sin must be early ganker archetype');
+    const topCard = briefingRes.members.find((m) => m.role === 'top');
+    assert.strictEqual(topCard.laneTendency?.status, 'loses', 'Olaf vs Aatrox top must detect loses status');
 
     // 7. Solo/Duo History & Coaching endpoint (SOLORANKED only)
     const prevCfg = syncEngine.loadConfig();

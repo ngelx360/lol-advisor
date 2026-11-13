@@ -2692,11 +2692,27 @@ select {
 
 /* ==================== TOP ENEMY COUNTERS STRIP ==================== */
 .enemy-counters-strip {
-  padding: 12px 16px;
+  padding: 13px 18px;
   margin-bottom: 14px;
-  border-color: rgba(63, 208, 212, 0.34);
-  background: linear-gradient(135deg, rgba(13, 29, 34, 0.86), rgba(7, 17, 20, 0.88));
-  border-left: 3px solid var(--hex);
+  border-radius: 5px;
+  border: 1px solid rgba(46, 230, 166, 0.55);
+  border-left: 4px solid #2ee6a6;
+  background: linear-gradient(135deg, rgba(8, 38, 28, 0.94) 0%, rgba(6, 25, 20, 0.94) 55%, rgba(5, 17, 16, 0.96) 100%);
+  box-shadow: 0 0 22px rgba(46, 230, 166, 0.32), inset 0 0 16px rgba(46, 230, 166, 0.08);
+  animation: counter-strip-glow 2.8s ease-in-out infinite alternate;
+  position: relative;
+  overflow: hidden;
+}
+
+@keyframes counter-strip-glow {
+  0% {
+    border-color: rgba(46, 230, 166, 0.45);
+    box-shadow: 0 0 14px rgba(46, 230, 166, 0.22), inset 0 0 12px rgba(46, 230, 166, 0.05);
+  }
+  100% {
+    border-color: rgba(46, 230, 166, 0.85);
+    box-shadow: 0 0 26px rgba(46, 230, 166, 0.42), 0 0 6px rgba(46, 230, 166, 0.65), inset 0 0 18px rgba(46, 230, 166, 0.12);
+  }
 }
 
 .counters-strip-head {
@@ -2736,9 +2752,9 @@ select {
   padding: 1px 6px;
   margin-left: 4px;
   border-radius: 2px;
-  background: rgba(63, 208, 212, 0.14);
-  border: 1px solid rgba(63, 208, 212, 0.35);
-  color: var(--hex);
+  background: rgba(46, 230, 166, 0.16);
+  border: 1px solid rgba(46, 230, 166, 0.45);
+  color: #55ffb8;
 }
 
 .counters-strip-sub,
@@ -2752,11 +2768,12 @@ select {
   font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #8df8fb;
-  border: 1px solid rgba(63, 208, 212, 0.45);
-  background: rgba(63, 208, 212, 0.1);
+  color: #55ffb8;
+  border: 1px solid rgba(46, 230, 166, 0.55);
+  background: rgba(46, 230, 166, 0.14);
+  box-shadow: 0 0 8px rgba(46, 230, 166, 0.2);
   padding: 3px 9px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .counters-cards-grid {
@@ -2772,23 +2789,24 @@ select {
   justify-content: space-between;
   gap: 8px;
   padding: 9px 11px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: rgba(7, 17, 20, 0.72);
+  border: 1px solid rgba(46, 230, 166, 0.25);
+  border-radius: 4px;
+  background: rgba(6, 20, 17, 0.78);
   cursor: pointer;
-  transition: border-color 0.14s ease, background 0.14s ease, transform 0.12s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.12s ease, box-shadow 0.16s ease;
 }
 
 .counter-card:hover {
-  border-color: rgba(63, 208, 212, 0.55);
-  background: rgba(22, 46, 54, 0.75);
-  transform: translateY(-1px);
+  border-color: rgba(46, 230, 166, 0.85);
+  background: rgba(10, 36, 28, 0.88);
+  box-shadow: 0 4px 16px rgba(46, 230, 166, 0.28);
+  transform: translateY(-2px);
 }
 
 .counter-card.selected {
-  border-color: var(--hex);
-  background: rgba(63, 208, 212, 0.12);
-  box-shadow: 0 0 12px rgba(63, 208, 212, 0.22);
+  border-color: #2ee6a6;
+  background: rgba(12, 42, 32, 0.95);
+  box-shadow: 0 0 16px rgba(46, 230, 166, 0.45);
 }
 
 .counter-card-top {
@@ -2807,8 +2825,9 @@ select {
 }
 
 .counter-rank.r1 {
-  color: #5cf7ff;
-  text-shadow: 0 0 8px rgba(92, 247, 255, 0.5);
+  color: #55ffb8;
+  text-shadow: 0 0 8px rgba(85, 255, 184, 0.6);
+  font-weight: 800;
 }
 
 .counter-rank.rtop {
@@ -2887,4 +2906,261 @@ select {
 .counter-choose-btn {
   padding: 3px 9px;
   font-size: 11.5px;
+}
+
+/* ==================== TEAM TACTICAL BRIEFING (MI CAMPEON) ==================== */
+.team-tactical-card {
+  margin-top: 14px;
+  margin-bottom: 14px;
+  padding: 16px 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(63, 208, 212, 0.28);
+  background: linear-gradient(135deg, rgba(12, 26, 32, 0.92) 0%, rgba(8, 18, 22, 0.94) 100%);
+}
+
+.tactical-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tactical-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tactical-main-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  color: var(--bone);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tactical-live-pill {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(46, 230, 166, 0.18);
+  border: 1px solid rgba(46, 230, 166, 0.5);
+  color: #55ffb8;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tactical-comp-strategy {
+  margin-top: 12px;
+  margin-bottom: 14px;
+  padding: 11px 15px;
+  border-radius: 4px;
+  background: rgba(18, 36, 44, 0.55);
+  border-left: 3px solid #2ee6a6;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tactical-strategy-body {
+  flex: 1;
+}
+
+.tactical-strategy-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #55ffb8;
+  margin-bottom: 3px;
+}
+
+.tactical-strategy-plan {
+  font-size: 12.5px;
+  color: var(--bone);
+  line-height: 1.45;
+}
+
+.tactical-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 12px;
+}
+
+.tactical-role-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: rgba(7, 16, 20, 0.72);
+  transition: border-color 0.16s ease, transform 0.12s ease;
+}
+
+.tactical-role-card:hover {
+  border-color: rgba(63, 208, 212, 0.45);
+  transform: translateY(-2px);
+}
+
+.tactical-role-card.is-me {
+  border-color: rgba(200, 170, 110, 0.75);
+  background: linear-gradient(135deg, rgba(28, 24, 14, 0.88), rgba(12, 17, 20, 0.85));
+  box-shadow: 0 0 14px rgba(200, 170, 110, 0.18);
+}
+
+.tactical-role-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.tactical-champ-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  object-fit: cover;
+  flex: none;
+}
+
+.tactical-champ-empty-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  border: 1px dashed var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 16px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tactical-role-names {
+  min-width: 0;
+  flex: 1;
+}
+
+.tactical-role-tagline {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tactical-me-badge {
+  font-size: 9.5px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(200, 170, 110, 0.25);
+  color: #f1db9a;
+  border: 1px solid rgba(200, 170, 110, 0.5);
+  font-weight: 800;
+}
+
+.tactical-champ-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactical-archetype-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.tactical-archetype-badge.emerald {
+  background: rgba(46, 230, 166, 0.16);
+  border: 1px solid rgba(46, 230, 166, 0.45);
+  color: #55ffb8;
+}
+
+.tactical-archetype-badge.amber {
+  background: rgba(245, 166, 35, 0.16);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  color: #ffc46b;
+}
+
+.tactical-archetype-badge.blue {
+  background: rgba(63, 208, 212, 0.16);
+  border: 1px solid rgba(63, 208, 212, 0.45);
+  color: #8df8fb;
+}
+
+.tactical-archetype-badge.purple {
+  background: rgba(175, 107, 255, 0.16);
+  border: 1px solid rgba(175, 107, 255, 0.45);
+  color: #d8b4fe;
+}
+
+.tactical-archetype-badge.red {
+  background: rgba(232, 81, 127, 0.16);
+  border: 1px solid rgba(232, 81, 127, 0.45);
+  color: #ff85a9;
+}
+
+.tactical-archetype-badge.neutral {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--muted);
+}
+
+.tactical-behavior-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--bone-dim, #c0c8cc);
+}
+
+.tactical-lane-tendency {
+  margin-top: 6px;
+  padding: 6px 9px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.tactical-lane-tendency.emerald {
+  background: rgba(46, 230, 166, 0.12);
+  border: 1px solid rgba(46, 230, 166, 0.35);
+  color: #a7ffda;
+}
+
+.tactical-lane-tendency.amber {
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  color: #ffe099;
+}
+
+.tactical-lane-tendency.blue {
+  background: rgba(63, 208, 212, 0.12);
+  border: 1px solid rgba(63, 208, 212, 0.35);
+  color: #a7f5f7;
+}
+
+.tactical-empty-prompt {
+  text-align: center;
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 12.5px;
 }
