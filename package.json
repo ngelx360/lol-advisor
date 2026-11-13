@@ -1,0 +1,12 @@
+{
+  "name": "lol-ranked-advisor",
+  "version": "1.0.0",
+  "description": "Minimalist League of Legends Ranked Draft Advisor powered by OP.GG MCP and Riot Data Dragon",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node -e \"require('./lib/syncEngine').syncSeasonFromOpgg({onProgress: e => console.log(e.percent + '%', e.message)}).catch(err => { console.error(err); process.exit(1); })\"",
+    "test": "node test/runTests.js"
+  },
+  "license": "MIT"
+}

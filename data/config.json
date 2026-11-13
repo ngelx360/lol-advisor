@@ -1,0 +1,47 @@
+{
+  "activeSeason": "16.22",
+  "myPool": [
+    34,
+    103,
+    3,
+    90,
+    7,
+    13,
+    238,
+    59,
+    9,
+    35,
+    141,
+    268,
+    777
+  ],
+  "defaultRoles": [
+    "mid"
+  ],
+  "lcuEnabled": true,
+  "lcuLockfilePath": "",
+  "autoFocusMyChampTab": true,
+  "riotAccount": {
+    "gameName": "Ngelx",
+    "tagLine": "T1f4e",
+    "region": "LAN"
+  },
+  "overlayAutoInGame": true,
+  "overlayDemo": false,
+  "overlayLocked": true,
+  "overlayScale": 1,
+  "overlayOpacity": 0.68,
+  "overlayX": null,
+  "overlayY": null,
+  "discord": {
+    "enabled": true,
+    "bridgeUrl": "https://lol-advisor.ngelx360.workers.dev",
+    "botToken": "",
+    "channelId": "1569830216757411911",
+    "roadToChannelId": "1569855142528950282",
+    "webhookUrl": "",
+    "adminOnly": true,
+    "adminIds": ""
+  },
+  "clientOwnerKey": "6848f312ad38"
+}

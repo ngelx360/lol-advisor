@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoL Ranked Advisor</title>
+  <link rel="icon" href="/icon.ico" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Barlow:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Bar matching LOL VERSUS -->
+    <header class="bar topbar">
+      <div class="bar-left">
+        <div class="brand-col">
+          <div class="brand">
+            <span class="brand-hex"></span>
+            <span class="brand-title">LoL Advisor</span>
+          </div>
+          <div id="lcuProfileBadge" class="lcu-profile-badge offline">
+            <img id="lcuProfileAvatar" class="lcu-profile-avatar hidden" alt="" />
+            <div class="lcu-profile-meta">
+              <div id="lcuProfileName" class="lcu-profile-name">LoL no detectado</div>
+              <div id="lcuProfileRank" class="lcu-profile-rank">Abre League of Legends</div>
+            </div>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="Navegación principal">
+          <button class="ghost on nav-tab" data-view="draft">Draft &amp; Picks</button>
+          <button class="ghost nav-tab hidden" id="myChampNavTab" data-view="my-champion">
+            <img id="myChampTabIcon" class="dav" alt="" />
+            <span id="myChampTabLabel">Mi Campeón</span>
+          </button>
+          <button class="ghost nav-tab" data-view="soloduo">Historial Solo/Duo</button>
+          <button class="ghost nav-tab" data-view="database">Seasons &amp; Datos</button>
+          <button class="ghost nav-tab" data-view="torneo" id="torneoNavTab">TORNEO BLITZ</button>
+          <button class="ghost nav-tab" data-view="roadto" id="roadToNavTab">Road To</button>
+        </nav>
+      </div>
+
+      <div class="status" id="lcuStatusWrap">
+        <div class="overlay-stack">
+          <button id="overlayToggleBtn" class="ghost overlay-hero-btn" title="Abrir o cerrar el Overlay flotante en esquina superior derecha">
+            <span class="dot" id="overlayIndicator"></span>
+            <span id="overlayBtnText">Overlay: OFF</span>
+          </button>
+          <div class="overlay-helper-text">
+            <span class="overlay-helper-title">OVERLAY</span> recomendaciones mientras juegas, activa o desactiva aquí
+          </div>
+        </div>
+
+        <div class="status-right-col">
+          <div class="status-controls-row">
+            <button id="lcuStatusPill" class="ghost status-btn" title="Clic para activar/desactivar detección automática del cliente de LoL">
+              <span class="dot" id="lcuIndicator"></span>
+              <span id="lcuStatusText">LCU: Esperando LoL</span>
+            </button>
+
+            <div class="season-pill-group">
+              <span id="activePatchPill" class="season-pill">Sin datos</span>
+              <button id="quickSyncBtn" class="ghost icon-mini-btn" title="Actualizar base de datos de Season desde OP.GG">↻</button>
+            </div>
+          </div>
+
+          <div class="donate-under-patch">
+            <span class="donate-label">DONACIONES</span>
+            <a id="paypalDonateBtn" class="paypal-donate-btn" href="https://paypal.me/ADVISOR360" target="_blank" rel="noopener noreferrer" title="Apoyar al proyecto con PayPal">
+              <span class="paypal-pay">Pay</span><span class="paypal-pal">Pal</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Admin Announcement Banner (!AVISO ...) -->
+    <div id="globalAvisoBanner" class="global-aviso-banner hidden">
+      <div class="global-aviso-content">
+        <span class="global-aviso-badge">📢 AVISO</span>
+        <span id="globalAvisoText" class="global-aviso-text"></span>
+        <span id="globalAvisoMeta" class="global-aviso-meta"></span>
+      </div>
+      <button id="dismissAvisoBtn" class="ghost icon-mini-btn" title="Ocultar este aviso">✕</button>
+    </div>
+
+    <!-- Live Sync Progress Bar -->
+    <div id="syncBanner" class="sync-banner hidden">
+      <div class="sync-banner-info">
+        <span id="syncStageLabel">Actualizando desde OP.GG...</span>
+        <span id="syncPercentLabel" class="mono">0%</span>
+      </div>
+      <div class="track">
+        <div id="syncFill" class="fill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <main class="main-content">
+      <!-- ==================== VIEW 1: DRAFT & PICKS ==================== -->
+      <section id="view-draft" class="view active">
+        <div id="emptyDbBanner" class="rbanner warn hidden">
+          <div class="rbanner-info">
+            <div class="rbanner-title">No hay base de datos de Season descargada</div>
+            <div class="rbanner-sub">Descarga los win rates, counters, builds y runas actuales directamente desde OP.GG.</div>
+          </div>
+          <button id="emptyDbSyncBtn" class="hex-cta">Descargar Season</button>
+        </div>
+
+        <!-- Compact Draft Controls Strip -->
+        <div class="panel draft-strip">
+          <div class="draft-block">
+            <label class="micro-label">Tu Rol</label>
+            <div class="role-pills" id="roleSelector">
+              <button class="ghost role-pill" data-role="top">Top</button>
+              <button class="ghost role-pill" data-role="jungle">Jungle</button>
+              <button class="ghost role-pill on" data-role="mid">Mid</button>
+              <button class="ghost role-pill" data-role="adc">ADC</button>
+              <button class="ghost role-pill" data-role="support">Support</button>
+            </div>
+          </div>
+
+          <div class="draft-divider"></div>
+
+          <div class="draft-block">
+            <label class="micro-label">Rival de Línea</label>
+            <div class="slot-row">
+              <button id="enemyLanerBtn" class="champ-slot-btn enemy-slot" title="Seleccionar rival de tu línea">
+                <span class="slot-empty">+ Sin rival (1er Pick)</span>
+              </button>
+              <button id="clearEnemyLanerBtn" class="ghost clear-slot-btn hidden" title="Quitar rival de línea">×</button>
+            </div>
+          </div>
+
+          <div class="draft-divider"></div>
+
+          <div class="draft-block">
+            <label class="micro-label">Tus Aliados (Sinergia)</label>
+            <div class="allies-row" id="alliesContainer"></div>
+          </div>
+
+          <div class="draft-divider"></div>
+
+          <div class="draft-block">
+            <label class="micro-label">Tu Campeón</label>
+            <div class="slot-row">
+              <button id="myChampDraftBtn" class="champ-slot-btn my-slot" title="Elegir manualmente tu campeón">
+                <span class="slot-empty">+ Elegir pick</span>
+              </button>
+              <button id="clearMyChampBtn" class="ghost clear-slot-btn hidden" title="Limpiar mi campeón">×</button>
+            </div>
+          </div>
+
+          <div class="draft-actions">
+            <label class="toggle-chip" title="Mostrar solo campeones de tu Champion Pool">
+              <input type="checkbox" id="onlyPoolToggle" />
+              <span>Solo Mi Pool</span>
+            </label>
+            <button id="resetDraftBtn" class="ghost" title="Limpiar draft manual">Limpiar</button>
+          </div>
+        </div>
+
+        <!-- Extra enemies / bans -->
+        <div id="extraDraftRow" class="extra-draft-row hidden">
+          <div id="otherEnemiesGroup" class="extra-group hidden">
+            <span class="micro-label">Otros enemigos (clic para marcar como rival de línea):</span>
+            <div id="otherEnemiesList" class="mini-chips"></div>
+          </div>
+          <div id="bansGroup" class="extra-group hidden">
+            <span class="micro-label">Bans:</span>
+            <div id="bansList" class="mini-chips"></div>
+          </div>
+        </div>
+
+        <!-- Context Banner -->
+        <div id="draftContextBanner" class="rbanner ok">
+          <div class="rbanner-info">
+            <div class="rbanner-sub" id="contextBannerText">Cargando datos del parche...</div>
+          </div>
+        </div>
+
+        <!-- Top Counters vs Selected Enemy Laner -->
+        <div id="enemyCountersStrip" class="panel enemy-counters-strip hidden"></div>
+
+        <!-- 5 Mode Switcher Pills + Search -->
+        <div class="toolbar-row">
+          <div class="mode-pills" id="modePills">
+            <button class="ghost mode-pill" data-mode="lane_1v1">Mejor 1v1 en Línea</button>
+            <button class="ghost mode-pill" data-mode="counter_wr">Mejor WR vs Rival</button>
+            <button class="ghost mode-pill" data-mode="synergy">Mejor Sinergia</button>
+            <button class="ghost mode-pill" data-mode="patch_wr">Mejor WR Parche</button>
+            <button class="ghost mode-pill" data-mode="my_pool" id="myPoolModeTab">Solo Mi Pool</button>
+            <button class="ghost mode-pill on" data-mode="global">Score Global</button>
+          </div>
+
+          <div class="toolbar-right">
+            <input type="search" id="candidateSearchInput" class="search-input" placeholder="Buscar campeón..." />
+          </div>
+        </div>
+
+        <!-- Split Panel: Ranked Table + Build Preview -->
+        <div class="draft-grid">
+          <div class="panel candidates-panel">
+            <div class="table-header">
+              <span class="col-rank">#</span>
+              <span class="col-champ">Campeón</span>
+              <span class="col-primary" id="colPrimaryLabel">Score / Matchup</span>
+              <span class="col-patch">WR Parche</span>
+              <span class="col-extra">Pick / Ban</span>
+              <span class="col-act"></span>
+            </div>
+            <div id="candidatesList" class="candidates-list">
+              <div class="loading-state">Cargando recomendaciones...</div>
+            </div>
+          </div>
+
+          <div class="draft-right-col">
+            <div class="panel draft-pool-card" id="draftPoolCard">
+              <div class="draft-pool-head">
+                <div>
+                  <h3 class="sub-heading" style="margin-bottom:2px;">Mi Champion Pool (<span id="draftPoolCountLabel">0</span>)</h3>
+                  <span class="muted" style="font-size:11.5px;">Activa tus mains para priorizarlos arriba</span>
+                </div>
+                <button type="button" id="toggleDraftPoolBtn" class="ghost status-btn">Elegir</button>
+              </div>
+              <div id="draftPoolMiniRow" class="draft-pool-mini-row"></div>
+              <div id="draftPoolPicker" class="draft-pool-picker hidden">
+                <input type="search" id="draftPoolSearchInput" class="search-input" placeholder="Buscar campeón..." />
+                <div id="draftPoolGrid" class="pool-grid draft-pool-grid"></div>
+              </div>
+            </div>
+
+            <aside class="panel preview-panel" id="quickPreviewPanel">
+              <div class="empty-preview">
+                <p class="muted">Haz clic en cualquier campeón recomendado para ver al instante sus runas, build y ventaja 1v1.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: MI CAMPEON (PINNED BUILD & RUNES) ==================== -->
+      <section id="view-my-champion" class="view">
+        <div id="myChampionContent" class="my-champion-layout">
+          <div class="panel empty-preview">
+            <p class="muted">Cuando elijas o preselecciones un campeón en League of Legends (o desde Draft &amp; Picks), esta pestaña fijará su mejor build, runas y consejos de línea.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 3: HISTORIAL SOLO/DUO & COACHING ==================== -->
+      <section id="view-soloduo" class="view">
+        <div class="panel soloduo-search-bar">
+          <div class="soloduo-title-col">
+            <h2 class="section-heading">Análisis Solo / Duo</h2>
+            <p class="muted">Evalúa únicamente tus partidas <strong>Solo/Duo</strong> para detectar qué mejorar: farmeo, visión, participación en kills y subida de nivel.</p>
+          </div>
+
+          <form id="soloDuoForm" class="soloduo-form">
+            <input type="text" id="riotIdInput" class="text-input" placeholder="Riot ID (Ej: Faker#KR1)" required />
+            <select id="regionSelect" class="rsel" aria-label="Región">
+              <option value="LAN">LAN</option>
+              <option value="LAS">LAS</option>
+              <option value="NA">NA</option>
+              <option value="EUW">EUW</option>
+              <option value="EUNE">EUNE</option>
+              <option value="BR">BR</option>
+              <option value="KR">KR</option>
+              <option value="JP">JP</option>
+              <option value="OCE">OCE</option>
+            </select>
+            <button type="submit" id="analyzeSoloDuoBtn" class="ghost on">Analizar Solo/Duo</button>
+          </form>
+        </div>
+
+        <div id="soloDuoResults" class="soloduo-results">
+          <div class="panel empty-preview">
+            <p class="muted">Ingresa tu <strong>Nombre#TAG</strong> y región (o abre League of Legends para autocompletarlo) para analizar tus últimas partidas clasificatorias <strong>Solo/Duo</strong> desde OP.GG.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 4: SEASONS & BASE DE DATOS ==================== -->
+      <section id="view-database" class="view">
+        <div class="db-grid">
+          <div class="panel db-card">
+            <div class="card-header-row">
+              <div>
+                <h2 class="section-heading">Base de Datos de Season (OP.GG)</h2>
+                <p class="muted">Actualiza win rates, tiers, counters, sinergias y builds oficiales cada nuevo parche o season.</p>
+              </div>
+              <button id="fullSyncBtn" class="ghost on">Actualizar Season</button>
+            </div>
+
+            <div id="activeSeasonStats" class="stats-grid-4"></div>
+
+            <div class="sub-section">
+              <h3 class="sub-heading">Seasons / Parches Guardados</h3>
+              <div id="savedSeasonsList" class="saved-seasons-list"></div>
+            </div>
+          </div>
+
+          <div class="panel db-card">
+            <h2 class="section-heading">Cliente LoL (LCU) &amp; Pool</h2>
+            <p class="muted">Lectura automática de Champ Select y cuenta conectada en segundo plano.</p>
+
+            <div class="settings-list">
+              <label class="setting-row">
+                <div>
+                  <div class="setting-title">Detectar automáticamente cliente de League of Legends</div>
+                  <div class="setting-desc">Lee rol, picks enemigos, tu campeón y tu Riot ID en vivo</div>
+                </div>
+                <input type="checkbox" id="cfgLcuEnabled" />
+              </label>
+
+              <label class="setting-row">
+                <div>
+                  <div class="setting-title">Abrir pestaña "Mi Campeón" al detectar mi pick</div>
+                  <div class="setting-desc">Fija y muestra las runas y build de tu campeón elegido</div>
+                </div>
+                <input type="checkbox" id="cfgAutoFocusTab" />
+              </label>
+
+              <div class="setting-row column">
+                <div class="setting-title">Ruta personalizada del archivo lockfile (opcional)</div>
+                <div class="input-row">
+                  <input type="text" id="cfgLockfilePath" class="text-input" placeholder="Ej: C:\Riot Games\League of Legends\lockfile" />
+                  <button id="saveLcuPathBtn" class="ghost">Guardar</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="sub-section">
+              <h3 class="sub-heading">Overlay In-Game (Esquina Superior Derecha)</h3>
+              <p class="muted" style="margin-bottom:10px;">Muestra CS/min objetivo, Nivel/XP recomendado y orden de compra sobre LoL. Juega en modo <strong>Sin Bordes</strong>. Atajos: <span class="mono">Ctrl+Shift+O</span> (Mostrar) · <span class="mono">Ctrl+Shift+L</span> (Mover/Fijar).</p>
+              <div class="settings-list">
+                <label class="setting-row">
+                  <div>
+                    <div class="setting-title">Abrir automáticamente al entrar a partida (y cerrar al salir)</div>
+                    <div class="setting-desc">Detecta cuando entras a partida de LoL y muestra el overlay solo durante el juego</div>
+                  </div>
+                  <input type="checkbox" id="cfgOverlayAutoInGame" />
+                </label>
+
+                <label class="setting-row">
+                  <div>
+                    <div class="setting-title">Bloquear clics (Click-Through en partida)</div>
+                    <div class="setting-desc">Los clics atraviesan el overlay; desactiva para arrastrarlo</div>
+                  </div>
+                  <input type="checkbox" id="cfgOverlayLocked" />
+                </label>
+
+                <label class="setting-row">
+                  <div>
+                    <div class="setting-title">Modo Vista Previa (simular partida en pantalla)</div>
+                    <div class="setting-desc">Útil para probar, redimensionar y acomodar el overlay antes de entrar a partida</div>
+                  </div>
+                  <input type="checkbox" id="cfgOverlayDemo" />
+                </label>
+
+                <div class="setting-row column">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="setting-title">Tamaño del Overlay</span>
+                    <span id="overlayScaleLabel" class="mono muted">100% (236×178)</span>
+                  </div>
+                  <input type="range" id="cfgOverlayScale" min="0.75" max="1.45" step="0.05" value="1" style="width:100%;accent-color:var(--hex);" />
+                </div>
+
+                <div class="setting-row column">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="setting-title">Opacidad del Overlay</span>
+                    <span id="overlayOpacityLabel" class="mono muted">68%</span>
+                  </div>
+                  <input type="range" id="cfgOverlayOpacity" min="0.35" max="0.95" step="0.05" value="0.68" style="width:100%;accent-color:var(--hex);" />
+                </div>
+
+                <div class="setting-row column">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <div>
+                      <div class="setting-title">Posición en pantalla (X / Y)</div>
+                      <div class="setting-desc">Desactiva "Bloquear clics" arriba para arrastrarlo directo con el ratón</div>
+                    </div>
+                    <button id="resetOverlayPosBtn" class="ghost">Restablecer</button>
+                  </div>
+                  <div class="input-row">
+                    <input type="number" id="cfgOverlayX" class="text-input" placeholder="X (Auto)" style="max-width:110px;" />
+                    <input type="number" id="cfgOverlayY" class="text-input" placeholder="Y (74)" style="max-width:110px;" />
+                    <button id="applyOverlayPosBtn" class="ghost">Aplicar Posición</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sub-section">
+              <div class="pool-header">
+                <div>
+                  <h3 class="sub-heading">Mi Champion Pool (<span id="poolCountLabel">0</span>)</h3>
+                  <p class="muted">Marca tus mains para filtrarlos en el recomendador.</p>
+                </div>
+                <input type="search" id="poolSearchInput" class="search-input" placeholder="Filtrar campeón..." />
+              </div>
+              <div id="poolGrid" class="pool-grid"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5: TORNEO BLITZ (DISCORD + LOSER BRACKET) ==================== -->
+      <section id="view-torneo" class="view">
+        <!-- Top Status Banner (Solo estado llamativo + Sorteo + Sincronizar) -->
+        <div id="torneoBanner" class="rbanner torneo-status-banner">
+          <div class="rbanner-info">
+            <div class="torneo-status-hero closed" id="torneoBannerTitle">NO HAY TORNEO ABIERTO</div>
+            <div class="rbanner-sub" id="torneoBannerSub">El Admin inicia el torneo desde Discord con <span class="mono">!TORNEO ON 2</span>, <span class="mono">4</span>, <span class="mono">8</span> o <span class="mono">16</span>.</div>
+          </div>
+          <div class="torneo-actions">
+            <select id="torneoResizeSelect" class="rsel hidden" title="Ajustar cupos del torneo sin perder equipos">
+              <option value="2">2 eq.</option>
+              <option value="4">4 eq.</option>
+              <option value="8" selected>8 eq.</option>
+              <option value="16">16 eq.</option>
+            </select>
+            <button id="drawTorneoBtn" class="ghost sorteo-btn hidden" title="Sortear llaves cuando estén todos los equipos">🎲 Sorteo</button>
+            <button id="startTorneoBtn" class="ghost on hidden" title="Iniciar torneo y cuentas regresivas de 30 min">▶ Iniciar</button>
+            <button id="pauseTorneoBtn" class="ghost hidden" title="Pausar / reanudar relojes del torneo">⏸ Pausar</button>
+            <button id="refreshTorneoBtn" class="ghost icon-mini-btn" title="Sincronizar con Discord">↻</button>
+          </div>
+        </div>
+
+        <div class="db-grid" style="margin-bottom:14px;">
+          <!-- Left: Team Registration -->
+          <div class="panel db-card">
+            <h2 class="section-heading glow-white-heading">Inscribir Equipo (<span id="torneoTeamCount">0/8</span>)</h2>
+            <p class="reg-subtitle">Registra tu equipo con su Riot ID exacto (<span class="mono reg-hi-cyan">Nombre#TAG</span>). Cada cuenta se verifica en <strong class="reg-hi-gold">OP.GG</strong> antes de entrar; todos pueden inscribir y dar de baja su equipo.</p>
+
+            <form id="torneoRegisterForm" class="torneo-reg-form">
+              <div class="input-row">
+                <div class="reg-role-box reg-team-field" style="--role-c:#ffe29a;--role-glow:rgba(255,226,154,0.5);">
+                  <span class="reg-role-label">Nombre del Equipo</span>
+                  <input type="text" id="regTeamName" class="text-input reg-team-input" placeholder="Ej: T1" required maxlength="24" />
+                </div>
+                <select id="regRegionSelect" class="select-input" title="Región en OP.GG" style="align-self:flex-end;height:36px;">
+                  <option value="LAN" selected>LAN</option>
+                  <option value="LAS">LAS</option>
+                  <option value="NA">NA</option>
+                  <option value="BR">BR</option>
+                  <option value="EUW">EUW</option>
+                  <option value="EUNE">EUNE</option>
+                  <option value="KR">KR</option>
+                  <option value="JP">JP</option>
+                  <option value="OCE">OCE</option>
+                </select>
+              </div>
+              <div class="torneo-players-grid">
+                <div class="reg-role-box" style="--role-c:#ff8b66;--role-glow:rgba(255,139,102,0.52);">
+                  <span class="reg-role-label">Top</span>
+                  <input type="text" class="text-input reg-player" placeholder="Nombre#TAG" required />
+                </div>
+                <div class="reg-role-box" style="--role-c:#4ef2a1;--role-glow:rgba(78,242,161,0.52);">
+                  <span class="reg-role-label">Jungle</span>
+                  <input type="text" class="text-input reg-player" placeholder="Nombre#TAG" />
+                </div>
+                <div class="reg-role-box" style="--role-c:#5cf2ff;--role-glow:rgba(92,242,255,0.52);">
+                  <span class="reg-role-label">Mid</span>
+                  <input type="text" class="text-input reg-player" placeholder="Nombre#TAG" />
+                </div>
+                <div class="reg-role-box" style="--role-c:#ffd166;--role-glow:rgba(255,209,102,0.52);">
+                  <span class="reg-role-label">ADC</span>
+                  <input type="text" class="text-input reg-player" placeholder="Nombre#TAG" />
+                </div>
+                <div class="reg-role-box" style="--role-c:#c792ff;--role-glow:rgba(199,146,255,0.52);">
+                  <span class="reg-role-label">Support</span>
+                  <input type="text" class="text-input reg-player" placeholder="Nombre#TAG" />
+                </div>
+              </div>
+              <button type="submit" id="torneoRegBtn" class="ghost on">Verificar y registrar</button>
+              <div id="torneoRegMsg" class="metric-sub"></div>
+            </form>
+          </div>
+
+          <!-- Right: Registered Teams -->
+          <div class="panel db-card">
+            <h2 class="section-heading glow-white-heading">Equipos Inscritos</h2>
+            <p class="reg-subtitle"><span style="color:#4be88d;font-weight:600;">Verde</span> = ya está en la sala personalizada de LoL · <span style="color:#ff737d;font-weight:600;">Rojo</span> = falta entrar.</p>
+            <div id="torneoTeamsList" class="torneo-teams-list" style="max-height:360px;">
+              <p class="muted">No hay equipos inscritos todavía.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pre-Draw / Sorteo Box -->
+        <div id="torneoDrawCard" class="panel db-card torneo-draw-card hidden" style="margin-bottom:14px;">
+          <div class="card-header-row" style="margin-bottom:0;align-items:center;">
+            <div>
+              <h3 id="torneoDrawCardTitle" class="section-heading" style="margin-bottom:4px;">Esperando equipos para el Sorteo</h3>
+              <p id="torneoDrawCardSub" class="muted">Cuando todos los equipos estén completos se habilitará el botón de Sorteo.</p>
+            </div>
+            <button id="drawTorneoCardBtn" class="ghost sorteo-btn">🎲 Hacer Sorteo</button>
+          </div>
+        </div>
+
+        <!-- Double Elimination Bracket (Winners + Losers + Grand Final) -->
+        <div id="torneoBracketContainer" class="hidden">
+          <div id="winnersBracketCard" class="panel db-card" style="margin-bottom:14px;">
+            <h3 class="sub-heading" style="color:var(--hex);">Winners Bracket</h3>
+            <div id="winnersBracketGrid" class="bracket-rounds-row"></div>
+          </div>
+
+          <div id="losersBracketCard" class="panel db-card" style="margin-bottom:14px;">
+            <h3 class="sub-heading" style="color:var(--zaun);">Losers Bracket</h3>
+            <div id="losersBracketGrid" class="bracket-rounds-row"></div>
+          </div>
+
+          <div id="grandFinalCard" class="panel db-card">
+            <h3 class="sub-heading" style="color:var(--brass);">Gran Final</h3>
+            <div id="grandFinalBox" class="bracket-rounds-row"></div>
+          </div>
+
+          <div id="torneoMvpCard" class="panel db-card" style="margin-top:14px;">
+            <h3 class="sub-heading" style="color:#ffe29a;">🏆 Tabla de MVP y Estadísticas del Torneo</h3>
+            <div id="torneoMvpBody">
+              <p class="muted">Las estadísticas KDA, daño, CS y MVP aparecerán automáticamente cuando termine la primera partida del torneo.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: ROAD TO (INDIVIDUAL RANKED LADDER) ==================== -->
+      <section id="view-roadto" class="view">
+        <div id="roadToBanner" class="rbanner torneo-status-banner">
+          <div class="rbanner-info">
+            <div class="torneo-status-hero closed" id="roadToBannerTitle">NO HAY ROAD TO ACTIVO</div>
+            <div class="rbanner-sub" id="roadToBannerSub">El Admin abre la temporada escribiendo <span class="mono">!ROADTO ON</span> en tu canal <span class="mono">#road-to</span> de Discord.</div>
+          </div>
+          <div class="torneo-actions">
+            <button id="refreshRoadToBtn" class="ghost" title="Actualizar rangos desde OP.GG y Discord">↻ Actualizar Rangos</button>
+          </div>
+        </div>
+
+        <div class="panel db-card" style="margin-bottom:14px;">
+          <h2 class="section-heading glow-white-heading">Inscribirse a Road To (<span id="roadToPlayerCount">0</span>)</h2>
+          <p class="muted" style="margin-bottom:10px;">Ingresa tu cuenta de LoL. Se analiza en <strong>OP.GG</strong> tu rango actual y tus <strong>seasons anteriores</strong> para ubicarte automáticamente en tu categoría y meta:</p>
+          <div class="roadto-rules-chips">
+            <span class="rt-rule-pill" style="--rt-c:#f5b942;">Hierro / Bronce → <strong>Road to Oro</strong> (Oro I)</span>
+            <span class="rt-rule-pill" style="--rt-c:#38e89e;">Plata / Oro → <strong>Road to Esmeralda</strong> (Esmeralda I)</span>
+            <span class="rt-rule-pill" style="--rt-c:#60b8ff;">Platino / Esmeralda → <strong>Road to Diamante</strong> (Diamante I)</span>
+            <span class="rt-rule-pill" style="--rt-c:#c77dff;">Diamante → <strong>Road to Master</strong> (Máx LP)</span>
+            <span class="rt-rule-pill" style="--rt-c:#ffe066;">Master+ → <strong>Road to Challenger</strong></span>
+          </div>
+
+          <form id="roadToRegisterForm" class="torneo-reg-form" style="margin-top:10px;">
+            <div class="input-row">
+              <input type="text" id="roadToRiotIdInput" class="text-input" placeholder="Tu Riot ID (Ej: Ejemplo#lan)" required />
+              <select id="roadToRegionSelect" class="select-input">
+                <option value="LAN" selected>LAN</option>
+                <option value="LAS">LAS</option>
+                <option value="NA">NA</option>
+                <option value="BR">BR</option>
+                <option value="EUW">EUW</option>
+                <option value="EUNE">EUNE</option>
+                <option value="KR">KR</option>
+                <option value="JP">JP</option>
+                <option value="OCE">OCE</option>
+              </select>
+            </div>
+            <button type="submit" id="roadToRegBtn" class="ghost on">Analizar Seasons y Registrar</button>
+            <div id="roadToRegMsg" class="metric-sub"></div>
+          </form>
+        </div>
+
+        <div class="roadto-filter-bar" id="roadToFilterBar">
+          <button class="ghost on roadto-cat-tab" data-rtcat="all">Todas las Categorías</button>
+          <button class="ghost roadto-cat-tab" data-rtcat="road_oro">Road to Oro</button>
+          <button class="ghost roadto-cat-tab" data-rtcat="road_esmeralda">Road to Esmeralda</button>
+          <button class="ghost roadto-cat-tab" data-rtcat="road_diamante">Road to Diamante</button>
+          <button class="ghost roadto-cat-tab" data-rtcat="road_master">Road to Master</button>
+          <button class="ghost roadto-cat-tab" data-rtcat="road_challenger">Road to Challenger</button>
+        </div>
+
+        <div id="roadToBoardsGrid" class="roadto-boards-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Champion Picker Modal -->
+  <div id="champPickerModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="pickerModalTitle" class="section-heading">Seleccionar campeón</h3>
+        <button id="closePickerModalBtn" class="ghost icon-mini-btn">✕</button>
+      </div>
+      <div class="modal-search-row">
+        <input type="search" id="pickerSearchInput" class="text-input" placeholder="Escribe el nombre del campeón..." autofocus />
+      </div>
+      <div id="pickerGrid" class="picker-grid"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
