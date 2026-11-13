@@ -1,0 +1,8 @@
+{
+  "version": "2.1.0",
+  "patch": "16.22",
+  "title": "LoL Advisor v2.1.0",
+  "changelog": "Counters automáticos del rival de línea, corrección de inicio 127.0.0.1 y soporte para torneos.",
+  "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
+  "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
+}

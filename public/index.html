@@ -74,6 +74,17 @@
       </div>
     </header>
 
+    <!-- Cloud Auto-Update Banner (GitHub Releases) -->
+    <div id="cloudUpdateBanner" class="cloud-update-banner hidden">
+      <div class="cloud-update-content">
+        <span class="cloud-update-badge">🚀 ACTUALIZACIÓN</span>
+        <span id="cloudUpdateText" class="cloud-update-text">Nueva versión disponible</span>
+        <button type="button" id="applyUpdateBtn" class="ghost cloud-update-btn">Actualizar con 1 Clic</button>
+        <a id="cloudUpdateManualLink" href="https://github.com/ngelx360/lol-advisor/releases/latest" target="_blank" rel="noopener noreferrer" class="ghost cloud-update-link">Ver en GitHub</a>
+      </div>
+      <button type="button" id="dismissUpdateBtn" class="ghost icon-mini-btn" title="Ocultar aviso">✕</button>
+    </div>
+
     <!-- Global Admin Announcement Banner (!AVISO ...) -->
     <div id="globalAvisoBanner" class="global-aviso-banner hidden">
       <div class="global-aviso-content">
@@ -296,6 +307,15 @@
             <div class="sub-section">
               <h3 class="sub-heading">Seasons / Parches Guardados</h3>
               <div id="savedSeasonsList" class="saved-seasons-list"></div>
+            </div>
+
+            <div class="sub-section">
+              <h3 class="sub-heading">Actualizaciones desde la Nube (GitHub)</h3>
+              <p class="muted" style="margin-bottom:8px;">Versión instalada: <strong id="cfgAppBuildLabel" class="mono">v2.1.0</strong> · Repositorio: <a href="https://github.com/ngelx360/lol-advisor" target="_blank" rel="noopener noreferrer" class="muted" style="text-decoration:underline;">ngelx360/lol-advisor</a></p>
+              <div class="input-row" style="align-items:center;gap:12px;">
+                <button type="button" id="manualCheckUpdateBtn" class="ghost">Buscar Actualizaciones</button>
+                <span id="manualUpdateCheckStatus" class="muted" style="font-size:12.5px;"></span>
+              </div>
             </div>
           </div>
 

@@ -136,6 +136,7 @@ async function bootstrap() {
     attachSyncStream();
   }
 
+  checkCloudUpdates(false);
   await refreshRecommendations();
 }
 
@@ -1324,8 +1325,87 @@ function renderPickerGrid(query) {
     .join('');
 }
 
+let cloudUpdateInfo = null;
+
+async function checkCloudUpdates(isManual = false) {
+  const banner = document.getElementById('cloudUpdateBanner');
+  const textEl = document.getElementById('cloudUpdateText');
+  const manualLink = document.getElementById('cloudUpdateManualLink');
+  const manualStatus = document.getElementById('manualUpdateCheckStatus');
+  const manualBtn = document.getElementById('manualCheckUpdateBtn');
+
+  if (isManual && manualStatus) {
+    manualStatus.textContent = 'Consultando GitHub...';
+    if (manualBtn) manualBtn.disabled = true;
+  }
+
+  try {
+    const res = await apiJson('/api/update/check');
+    cloudUpdateInfo = res;
+    if (document.getElementById('cfgAppBuildLabel')) {
+      document.getElementById('cfgAppBuildLabel').textContent = `v${res.currentVersion || '2.1.0'}`;
+    }
+
+    if (res.updateAvailable) {
+      if (banner && textEl) {
+        textEl.textContent = `Nueva versión v${res.remoteVersion} disponible: ${res.title || res.changelog || 'Nuevas mejoras'}`;
+        if (manualLink && res.installerUrl) {
+          manualLink.href = res.installerUrl;
+        }
+        banner.classList.remove('hidden');
+      }
+      if (manualStatus) {
+        manualStatus.innerHTML = `<strong style="color:var(--hex);">¡Nueva versión v${res.remoteVersion} disponible!</strong>`;
+      }
+    } else {
+      if (banner) banner.classList.add('hidden');
+      if (isManual && manualStatus) {
+        manualStatus.textContent = `✓ Ya tienes la última versión instalada (v${res.currentVersion}).`;
+      }
+    }
+  } catch (err) {
+    if (isManual && manualStatus) {
+      manualStatus.textContent = `Error al consultar: ${err.message}`;
+    }
+  } finally {
+    if (isManual && manualBtn) manualBtn.disabled = false;
+  }
+}
+
+async function applyCloudUpdate() {
+  const btn = document.getElementById('applyUpdateBtn');
+  if (!btn) return;
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Descargando e instalando...';
+
+  try {
+    await apiJson('/api/update/apply', {
+      method: 'POST',
+      body: JSON.stringify({ zipUrl: cloudUpdateInfo?.zipUrl || '' })
+    });
+    btn.textContent = '✓ ¡Actualizado! Reiniciando...';
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = origText;
+    alert(`Error al actualizar: ${err.message}\n\nPuedes descargar el instalador manualmente desde GitHub.`);
+  }
+}
+
 // ==================== EVENT WIRING ====================
 function bindEvents() {
+  // Cloud auto-update events
+  document.getElementById('applyUpdateBtn')?.addEventListener('click', applyCloudUpdate);
+  document.getElementById('dismissUpdateBtn')?.addEventListener('click', () => {
+    document.getElementById('cloudUpdateBanner')?.classList.add('hidden');
+  });
+  document.getElementById('manualCheckUpdateBtn')?.addEventListener('click', () => {
+    checkCloudUpdates(true);
+  });
+
   // Top tabs
   document.querySelectorAll('.nav-tab').forEach((btn) => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));

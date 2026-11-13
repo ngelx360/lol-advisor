@@ -2437,6 +2437,65 @@ select {
   color: #ff9ca4;
 }
 
+/* ==================== CLOUD AUTO-UPDATE BANNER ==================== */
+.cloud-update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 22px;
+  background: linear-gradient(90deg, rgba(63, 208, 212, 0.22), rgba(184, 151, 90, 0.16));
+  border-bottom: 1px solid rgba(63, 208, 212, 0.5);
+  box-shadow: 0 0 16px rgba(63, 208, 212, 0.2);
+  position: relative;
+  z-index: 95;
+}
+
+.cloud-update-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cloud-update-badge {
+  font: 700 11px var(--font-display);
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 2px;
+  background: rgba(63, 208, 212, 0.25);
+  border: 1px solid rgba(63, 208, 212, 0.6);
+  color: #5cf7ff;
+  text-shadow: 0 0 8px rgba(92, 247, 255, 0.65);
+}
+
+.cloud-update-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.cloud-update-btn {
+  padding: 4px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-color: #5cf7ff;
+  background: rgba(63, 208, 212, 0.2);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(92, 247, 255, 0.4);
+}
+
+.cloud-update-btn:hover {
+  background: rgba(63, 208, 212, 0.38);
+  box-shadow: 0 0 16px rgba(92, 247, 255, 0.6);
+}
+
+.cloud-update-link {
+  font-size: 12px;
+  padding: 3px 9px;
+  color: var(--muted);
+}
+
 /* ==================== GLOBAL ANNOUNCEMENT BANNER (!AVISO) ==================== */
 .global-aviso-banner {
   display: flex;

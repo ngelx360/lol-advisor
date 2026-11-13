@@ -1,8 +1,10 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { URL } = require('url');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 
 const ddragon = require('./lib/ddragonClient');
 const opgg = require('./lib/opggClient');
@@ -19,6 +21,98 @@ const PORT = Number(process.env.PORT || 3848);
 const APP_BUILD = '2.1.0';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
+const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
+
+function isNewerVersion(remote, current) {
+  if (!remote || !current) return false;
+  const rParts = String(remote).replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const cParts = String(current).replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(rParts.length, cParts.length);
+  for (let i = 0; i < len; i++) {
+    const r = rParts[i] || 0;
+    const c = cParts[i] || 0;
+    if (r > c) return true;
+    if (r < c) return false;
+  }
+  return false;
+}
+
+function fetchJsonUrl(url, timeoutMs = 4500) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https:') ? https : http;
+    const req = client.get(url, { headers: { 'User-Agent': 'LoLAdvisor-Updater' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchJsonUrl(res.headers.location, timeoutMs).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let raw = '';
+      res.on('data', (chunk) => (raw += chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(raw));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error('Timeout al consultar actualización'));
+    });
+  });
+}
+
+function downloadBinaryFile(url, destPath, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath);
+    const client = url.startsWith('https:') ? https : http;
+    const req = client.get(url, { headers: { 'User-Agent': 'LoLAdvisor-Updater' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        file.close();
+        fs.unlink(destPath, () => {});
+        return downloadBinaryFile(res.headers.location, destPath, timeoutMs).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        file.close();
+        fs.unlink(destPath, () => {});
+        return reject(new Error(`HTTP ${res.statusCode} al descargar actualización`));
+      }
+      res.pipe(file);
+      file.on('finish', () => file.close(resolve));
+    });
+    req.on('error', (err) => {
+      file.close();
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      file.close();
+      fs.unlink(destPath, () => {});
+      reject(new Error('Timeout al descargar paquete'));
+    });
+  });
+}
+
+function extractUpdateZip(zipPath, targetDir) {
+  return new Promise((resolve, reject) => {
+    exec(`tar -xf "${zipPath}" -C "${targetDir}"`, (err) => {
+      if (!err || fs.existsSync(path.join(targetDir, 'server.js'))) {
+        return resolve();
+      }
+      exec(
+        `powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${targetDir}' -Force"`,
+        (err2) => {
+          if (err2) return reject(err2);
+          resolve();
+        }
+      );
+    });
+  });
+}
 
 let overlayProcess = null;
 let autoOverlayTimer = null;
@@ -280,6 +374,50 @@ async function handleApi(req, res, urlObj) {
 
   if (req.method === 'GET' && (pathname === '/api/health' || pathname === '/health')) {
     return sendJson(res, 200, { ok: true, appBuild: APP_BUILD });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/update/check') {
+    try {
+      const remote = await fetchJsonUrl(REMOTE_VERSION_URL);
+      const remoteVer = String(remote?.version || '').trim();
+      const available = isNewerVersion(remoteVer, APP_BUILD);
+      return sendJson(res, 200, {
+        currentVersion: APP_BUILD,
+        remoteVersion: remoteVer || APP_BUILD,
+        updateAvailable: available,
+        title: remote?.title || `LoL Advisor v${remoteVer}`,
+        changelog: remote?.changelog || '',
+        patch: remote?.patch || '',
+        zipUrl: remote?.zipUrl || '',
+        installerUrl: remote?.installerUrl || 'https://github.com/ngelx360/lol-advisor/releases/latest'
+      });
+    } catch (err) {
+      return sendJson(res, 200, {
+        currentVersion: APP_BUILD,
+        remoteVersion: APP_BUILD,
+        updateAvailable: false,
+        error: err.message
+      });
+    }
+  }
+
+  if (req.method === 'POST' && pathname === '/api/update/apply') {
+    const body = await readRequestBody(req).catch(() => ({}));
+    let zipUrl = body.zipUrl;
+    if (!zipUrl) {
+      const remote = await fetchJsonUrl(REMOTE_VERSION_URL).catch(() => null);
+      zipUrl = remote?.zipUrl || 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip';
+    }
+    const tempZip = path.join(os.tmpdir(), `lol_advisor_update_${Date.now()}.zip`);
+    try {
+      await downloadBinaryFile(zipUrl, tempZip);
+      await extractUpdateZip(tempZip, __dirname);
+      try { fs.unlinkSync(tempZip); } catch {}
+      return sendJson(res, 200, { ok: true, message: 'Actualización aplicada con éxito' });
+    } catch (err) {
+      try { if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip); } catch {}
+      return sendJson(res, 500, { error: `Error al aplicar actualización: ${err.message}` });
+    }
   }
 
   if (req.method === 'GET' && pathname === '/api/bootstrap') {

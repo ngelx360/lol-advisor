@@ -142,6 +142,11 @@ async function runHttpIntegrationTests() {
     assert.strictEqual(health.ok, true);
     assert.strictEqual(health.appBuild, '2.1.0');
 
+    // 0b. Cloud Auto-Update check
+    const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
+    assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
+    assert.strictEqual(updateCheck.currentVersion, '2.1.0');
+
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());
     assert(boot.activeSeason?.patch, 'Bootstrap must return activeSeason');
