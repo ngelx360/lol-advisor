@@ -1359,6 +1359,74 @@ function renderPoolGrid() {
   }
 }
 
+function updateOverlayPosCoordDisplay() {
+  const coordEl = document.getElementById('overlayPosCoordText');
+  if (!coordEl) return;
+  const cfg = state.config || {};
+  if (typeof cfg.overlayX === 'number' && typeof cfg.overlayY === 'number') {
+    coordEl.textContent = `Posición guardada: X: ${cfg.overlayX}, Y: ${cfg.overlayY}`;
+  } else {
+    coordEl.textContent = 'Posición: Auto (Superior Derecha)';
+  }
+}
+
+let isOverlayDragActive = false;
+
+async function toggleOverlayDragMode() {
+  isOverlayDragActive = !isOverlayDragActive;
+
+  const dragBtn = document.getElementById('toggleOverlayDragBtn');
+  const dragIcon = document.getElementById('dragBtnIcon');
+  const dragText = document.getElementById('dragBtnText');
+  const statusBadge = document.getElementById('overlayDragStatusBadge');
+  const banner = document.getElementById('dragActiveBanner');
+  const headerBtn = document.getElementById('headerMoveOverlayBtn');
+
+  if (isOverlayDragActive) {
+    const res = await apiJson('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({
+        overlayDemo: true,
+        overlayLocked: false
+      })
+    });
+    state.config = res.config;
+    await refreshOverlayStatus();
+
+    if (dragBtn) dragBtn.classList.add('saving-ready');
+    if (dragIcon) dragIcon.textContent = '✓';
+    if (dragText) dragText.textContent = 'Guardar y Fijar Posición';
+    if (statusBadge) {
+      statusBadge.className = 'overlay-pos-badge moving';
+      statusBadge.textContent = 'Moviendo...';
+    }
+    if (banner) banner.classList.remove('hidden');
+    if (headerBtn) headerBtn.classList.add('on');
+  } else {
+    const res = await apiJson('/api/config', {
+      method: 'POST',
+      body: JSON.stringify({
+        overlayLocked: true,
+        overlayDemo: false
+      })
+    });
+    state.config = res.config;
+    await refreshOverlayStatus();
+
+    if (dragBtn) dragBtn.classList.remove('saving-ready');
+    if (dragIcon) dragIcon.textContent = '🖱️';
+    if (dragText) dragText.textContent = 'Mover con el Ratón';
+    if (statusBadge) {
+      statusBadge.className = 'overlay-pos-badge locked';
+      statusBadge.textContent = 'Fijado';
+    }
+    if (banner) banner.classList.add('hidden');
+    if (headerBtn) headerBtn.classList.remove('on');
+
+    updateOverlayPosCoordDisplay();
+  }
+}
+
 function syncSettingsInputs() {
   if (!state.config) return;
   document.getElementById('cfgLcuEnabled').checked = Boolean(state.config.lcuEnabled);
@@ -1374,8 +1442,12 @@ function syncSettingsInputs() {
   document.getElementById('overlayScaleLabel').textContent = `${Math.round(sc * 100)}% (${Math.round(236 * sc)}×${Math.round(178 * sc)})`;
   document.getElementById('cfgOverlayOpacity').value = String(op);
   document.getElementById('overlayOpacityLabel').textContent = `${Math.round(op * 100)}%`;
-  document.getElementById('cfgOverlayX').value = state.config.overlayX ?? '';
-  document.getElementById('cfgOverlayY').value = state.config.overlayY ?? '';
+
+  const xInput = document.getElementById('cfgOverlayX');
+  if (xInput) xInput.value = state.config.overlayX ?? '';
+  const yInput = document.getElementById('cfgOverlayY');
+  if (yInput) yInput.value = state.config.overlayY ?? '';
+  updateOverlayPosCoordDisplay();
 }
 
 async function refreshOverlayStatus() {
@@ -1916,19 +1988,29 @@ function bindEvents() {
     state.config = res.config;
   });
 
-  document.getElementById('applyOverlayPosBtn').addEventListener('click', async () => {
-    const xVal = document.getElementById('cfgOverlayX').value.trim();
-    const yVal = document.getElementById('cfgOverlayY').value.trim();
-    const payload = {};
-    if (xVal !== '') payload.overlayX = Number(xVal);
-    if (yVal !== '') payload.overlayY = Number(yVal);
-    const res = await apiJson('/api/config', {
-      method: 'POST',
-      body: JSON.stringify(payload)
+  const dragBtn = document.getElementById('toggleOverlayDragBtn');
+  if (dragBtn) {
+    dragBtn.addEventListener('click', toggleOverlayDragMode);
+  }
+
+  const headerMoveBtn = document.getElementById('headerMoveOverlayBtn');
+  if (headerMoveBtn) {
+    headerMoveBtn.addEventListener('click', toggleOverlayDragMode);
+  }
+
+  const applyBtn = document.getElementById('applyOverlayPosBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', async () => {
+      const xVal = document.getElementById('cfgOverlayX')?.value.trim();
+      const yVal = document.getElementById('cfgOverlayY')?.value.trim();
+      const payload = {};
+      if (xVal) payload.overlayX = Number(xVal);
+      if (yVal) payload.overlayY = Number(yVal);
+      const res = await apiJson('/api/config', { method: 'POST', body: JSON.stringify(payload) });
+      state.config = res.config;
+      syncSettingsInputs();
     });
-    state.config = res.config;
-    syncSettingsInputs();
-  });
+  }
 
   document.getElementById('resetOverlayPosBtn').addEventListener('click', async () => {
     const res = await apiJson('/api/config', {
@@ -1937,6 +2019,7 @@ function bindEvents() {
     });
     state.config = res.config;
     syncSettingsInputs();
+    updateOverlayPosCoordDisplay();
   });
 
   // TORNEO BLITZ controls (Sorteo + Sync + Registro OP.GG)

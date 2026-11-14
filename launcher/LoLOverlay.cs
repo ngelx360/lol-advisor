@@ -137,6 +137,7 @@ namespace LoLOverlayApp
                 {
                     _isLocked = !_isLocked;
                     ApplyClickThrough(_isLocked);
+                    Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
                     Invalidate();
                 }
             }
@@ -218,6 +219,8 @@ namespace LoLOverlayApp
                         {
                             _isLocked = cfgLocked;
                             ApplyClickThrough(_isLocked);
+                            Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
+                            Invalidate();
                         }
 
                         if (cfg.ContainsKey("overlayScale") && cfg["overlayScale"] != null)
@@ -349,7 +352,7 @@ namespace LoLOverlayApp
             using (var bgBrush = new SolidBrush(ColInk))
                 g.FillRectangle(bgBrush, 0, 0, BaseW, BaseH);
 
-            using (var borderPen = new Pen(_isLocked ? ColSubtleEdge : ColBrass, 1f))
+            using (var borderPen = new Pen(_isLocked ? ColSubtleEdge : Color.FromArgb(245, 158, 11), _isLocked ? 1f : 2.5f))
                 g.DrawRectangle(borderPen, 0, 0, BaseW - 1, BaseH - 1);
 
             using (var accentBrush = new SolidBrush(ColHex))
@@ -381,9 +384,9 @@ namespace LoLOverlayApp
             using (var bHex = new SolidBrush(ColHex))
             {
                 g.DrawString(title, fTitle, bBone, new RectangleF(7, 3, BaseW - 74, 16));
-                string rightTag = (!_isLocked ? "MOVER · " : (isDemo ? "DEMO " : "")) + timeLabel;
+                string rightTag = (!_isLocked ? "★ MOVER (ARRASTRA) " : (isDemo ? "DEMO " : "")) + timeLabel;
                 SizeF sz = g.MeasureString(rightTag, fMono);
-                g.DrawString(rightTag, fMono, _isLocked ? bHex : new SolidBrush(ColBrass), BaseW - sz.Width - 6, 3);
+                g.DrawString(rightTag, fMono, _isLocked ? bHex : new SolidBrush(Color.FromArgb(245, 158, 11)), BaseW - sz.Width - 6, 3);
             }
 
             // Two compact metric blocks: FARMEO & EXP
@@ -501,6 +504,19 @@ namespace LoLOverlayApp
             using (var bTip = new SolidBrush(ColMuted))
             {
                 g.DrawString(counterNote, fTip, bTip, new RectangleF(7, tipY, BaseW - 14, BaseH - tipY - 3));
+            }
+
+            if (!_isLocked)
+            {
+                using (var dragBarBrush = new SolidBrush(Color.FromArgb(235, 245, 158, 11)))
+                    g.FillRectangle(dragBarBrush, 1, BaseH - 18, BaseW - 2, 17);
+                using (var fDrag = new Font("Segoe UI", 7.2f, FontStyle.Bold))
+                using (var bDrag = new SolidBrush(Color.FromArgb(15, 20, 25)))
+                {
+                    string dragHint = "ARRASTRAR CON RATÓN · SUELTA PARA FIJAR";
+                    SizeF szH = g.MeasureString(dragHint, fDrag);
+                    g.DrawString(dragHint, fDrag, bDrag, (BaseW - szH.Width) / 2, BaseH - 16);
+                }
             }
         }
 

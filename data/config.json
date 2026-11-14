@@ -29,8 +29,8 @@
   "overlayAutoInGame": true,
   "overlayDemo": false,
   "overlayLocked": true,
-  "overlayScale": 1,
-  "overlayOpacity": 0.68,
+  "overlayScale": 0.95,
+  "overlayOpacity": 0.6,
   "overlayX": null,
   "overlayY": null,
   "discord": {

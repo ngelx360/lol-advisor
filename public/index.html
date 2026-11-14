@@ -91,10 +91,16 @@
 
       <div class="status" id="lcuStatusWrap">
         <div class="overlay-stack">
-          <button id="overlayToggleBtn" class="ghost overlay-hero-btn" title="Abrir o cerrar el Overlay flotante en esquina superior derecha">
-            <span class="dot" id="overlayIndicator"></span>
-            <span id="overlayBtnText">Overlay: OFF</span>
-          </button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button id="overlayToggleBtn" class="ghost overlay-hero-btn" title="Abrir o cerrar el Overlay flotante en esquina superior derecha">
+              <span class="dot" id="overlayIndicator"></span>
+              <span id="overlayBtnText">Overlay: OFF</span>
+            </button>
+            <button id="headerMoveOverlayBtn" class="ghost header-move-btn" type="button" title="Acomodar posición del overlay con el ratón">
+              <span>🖱️</span>
+              <span class="header-move-text">Mover</span>
+            </button>
+          </div>
           <div class="overlay-helper-text">
             <span class="overlay-helper-title">OVERLAY</span> recomendaciones mientras juegas, activa o desactiva aquí
           </div>
@@ -444,18 +450,41 @@
                   <input type="range" id="cfgOverlayOpacity" min="0.35" max="0.95" step="0.05" value="0.68" style="width:100%;accent-color:var(--hex);" />
                 </div>
 
-                <div class="setting-row column">
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div class="setting-row column overlay-drag-card">
+                  <div class="overlay-drag-header">
                     <div>
-                      <div class="setting-title">Posición en pantalla (X / Y)</div>
-                      <div class="setting-desc">Desactiva "Bloquear clics" arriba para arrastrarlo directo con el ratón</div>
+                      <div class="setting-title" style="display:flex;align-items:center;gap:9px;">
+                        <span>Posición del Overlay</span>
+                        <span id="overlayDragStatusBadge" class="overlay-pos-badge locked">Fijado</span>
+                      </div>
+                      <div class="setting-desc">
+                        Acomoda el overlay arrastrándolo directamente con el ratón hacia donde te guste en tu pantalla.
+                      </div>
                     </div>
-                    <button id="resetOverlayPosBtn" class="ghost">Restablecer</button>
+                    <button id="resetOverlayPosBtn" class="ghost" type="button" title="Restablecer posición por defecto (Esquina superior derecha)">Restablecer Original</button>
                   </div>
-                  <div class="input-row">
-                    <input type="number" id="cfgOverlayX" class="text-input" placeholder="X (Auto)" style="max-width:110px;" />
-                    <input type="number" id="cfgOverlayY" class="text-input" placeholder="Y (74)" style="max-width:110px;" />
-                    <button id="applyOverlayPosBtn" class="ghost">Aplicar Posición</button>
+
+                  <div class="overlay-drag-ctrl-row">
+                    <button id="toggleOverlayDragBtn" class="ghost on drag-action-btn" type="button">
+                      <span id="dragBtnIcon" class="drag-btn-icon">🖱️</span>
+                      <span id="dragBtnText" class="drag-btn-text">Mover con el Ratón</span>
+                    </button>
+                    <span id="overlayPosCoordText" class="mono muted overlay-pos-coord">Posición: Auto (Superior Derecha)</span>
+                    <div class="hidden" style="display:none;">
+                      <input type="number" id="cfgOverlayX" />
+                      <input type="number" id="cfgOverlayY" />
+                      <button id="applyOverlayPosBtn" type="button"></button>
+                    </div>
+                  </div>
+
+                  <div id="dragActiveBanner" class="drag-active-banner hidden">
+                    <div class="drag-banner-content">
+                      <span class="drag-pulse-dot"></span>
+                      <div>
+                        <strong>Modo Mover Activo:</strong> El overlay está visible con borde dorado en tu pantalla.
+                        <br />Haz clic sobre él, <strong>arrástralo con el ratón</strong> a donde quieras y al soltarlo presiona <strong>"✓ Guardar y Fijar Posición"</strong>.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
