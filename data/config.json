@@ -27,8 +27,8 @@
     "region": "LAN"
   },
   "overlayAutoInGame": true,
-  "overlayDemo": false,
-  "overlayLocked": true,
+  "overlayDemo": true,
+  "overlayLocked": false,
   "overlayScale": 1,
   "overlayOpacity": 0.68,
   "overlayX": null,

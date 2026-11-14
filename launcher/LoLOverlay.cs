@@ -35,19 +35,45 @@ namespace LoLOverlayApp
         private const int HOTKEY_TOGGLE_LOCK = 2;
 
         private const int WM_SETCURSOR = 0x0020;
-        private const int WM_NCHITTEST = 0x0084;
+        private const int WM_NCLBUTTONDOWN = 0x00A1;
         private const int HTCAPTION = 2;
-        private const int WM_NCLBUTTONUP = 0x00A2;
         private const int WM_EXITSIZEMOVE = 0x0232;
 
-        [DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hwnd, int index);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        private static extern IntPtr GetWindowLongPtr32(IntPtr hWnd, int nIndex);
 
-        [DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+        private static extern IntPtr SetWindowLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        private static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
+        {
+            if (IntPtr.Size == 8) return GetWindowLongPtr64(hWnd, nIndex);
+            return GetWindowLongPtr32(hWnd, nIndex);
+        }
+
+        private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+        {
+            if (IntPtr.Size == 8) return SetWindowLongPtr64(hWnd, nIndex, dwNewLong);
+            return SetWindowLong32(hWnd, nIndex, dwNewLong);
+        }
 
         [DllImport("user32.dll")]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetCursor(IntPtr hCursor);
+
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -69,8 +95,6 @@ namespace LoLOverlayApp
         private bool _isDragging = false;
         private bool _hasInitialPosition = false;
         private float _scale = 1.0f;
-        private Point _dragStartMouse;
-        private Point _dragStartForm;
 
         // Hextech subtle translucent palette
         private static readonly Color ColInk = Color.FromArgb(6, 13, 16);
@@ -98,8 +122,6 @@ namespace LoLOverlayApp
             Location = new Point(area.Right - Width - 14, 74);
 
             MouseDown += OnOverlayMouseDown;
-            MouseMove += OnOverlayMouseMove;
-            MouseUp += OnOverlayMouseUp;
             MouseEnter += (s, e) => { if (!_isLocked) Cursor = Cursors.SizeAll; };
 
             _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -117,7 +139,11 @@ namespace LoLOverlayApp
             get
             {
                 CreateParams cp = base.CreateParams;
-                cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT;
+                cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_LAYERED;
+                if (_isLocked)
+                {
+                    cp.ExStyle |= (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
+                }
                 return cp;
             }
         }
@@ -148,12 +174,12 @@ namespace LoLOverlayApp
                 {
                     _userHidden = !_userHidden;
                     Visible = !_userHidden;
+                    if (Visible) ApplyClickThrough(_isLocked);
                 }
                 else if (id == HOTKEY_TOGGLE_LOCK)
                 {
                     _isLocked = !_isLocked;
                     ApplyClickThrough(_isLocked);
-                    Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
                     Invalidate();
                     if (_isLocked)
                     {
@@ -161,19 +187,15 @@ namespace LoLOverlayApp
                     }
                 }
             }
-            else if (m.Msg == WM_NCHITTEST && !_isLocked)
-            {
-                m.Result = (IntPtr)HTCAPTION;
-                return;
-            }
             else if (m.Msg == WM_SETCURSOR && !_isLocked)
             {
-                Cursor.Current = Cursors.SizeAll;
+                SetCursor(Cursors.SizeAll.Handle);
                 m.Result = (IntPtr)1;
                 return;
             }
-            else if (m.Msg == WM_EXITSIZEMOVE || (m.Msg == WM_NCLBUTTONUP && !_isLocked))
+            else if (m.Msg == WM_EXITSIZEMOVE)
             {
+                _isDragging = false;
                 SaveOverlayPosition();
             }
 
@@ -183,36 +205,22 @@ namespace LoLOverlayApp
         private void ApplyClickThrough(bool clickThrough)
         {
             if (!IsHandleCreated) return;
-            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
+            long ex = GetWindowLongPtr(Handle, GWL_EXSTYLE).ToInt64();
             if (clickThrough)
-                exStyle |= (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
+                ex |= (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
             else
-                exStyle &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
-            SetWindowLong(Handle, GWL_EXSTYLE, exStyle);
+                ex &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
+            SetWindowLongPtr(Handle, GWL_EXSTYLE, (IntPtr)ex);
             SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            Cursor = clickThrough ? Cursors.Default : Cursors.SizeAll;
         }
 
         private void OnOverlayMouseDown(object sender, MouseEventArgs e)
         {
             if (_isLocked || e.Button != MouseButtons.Left) return;
             _isDragging = true;
-            _dragStartMouse = Cursor.Position;
-            _dragStartForm = Location;
-        }
-
-        private void OnOverlayMouseMove(object sender, MouseEventArgs e)
-        {
-            if (!_isDragging) return;
-            Point cur = Cursor.Position;
-            Location = new Point(
-                _dragStartForm.X + (cur.X - _dragStartMouse.X),
-                _dragStartForm.Y + (cur.Y - _dragStartMouse.Y)
-            );
-        }
-
-        private void OnOverlayMouseUp(object sender, MouseEventArgs e)
-        {
-            if (!_isDragging) return;
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
             _isDragging = false;
             SaveOverlayPosition();
         }
@@ -262,7 +270,21 @@ namespace LoLOverlayApp
                 {
                     bool cfgDemo = cfg.ContainsKey("overlayDemo") && Convert.ToBoolean(cfg["overlayDemo"]);
                     bool cfgLocked = !cfg.ContainsKey("overlayLocked") || Convert.ToBoolean(cfg["overlayLocked"]);
-                    _isDemo = cfgDemo;
+
+                    if (!_isDemo && cfgDemo)
+                    {
+                        _isDemo = true;
+                        string demoRaw = HttpGetString(BaseUrl + "/api/live-overlay?demo=1");
+                        if (!string.IsNullOrEmpty(demoRaw))
+                        {
+                            _state = _json.Deserialize<Dictionary<string, object>>(demoRaw);
+                        }
+                    }
+                    else
+                    {
+                        _isDemo = cfgDemo;
+                    }
+
                     _pollTimer.Interval = _isDemo ? 500 : 1200;
 
                     if (cfgLocked != _isLocked)
@@ -330,7 +352,11 @@ namespace LoLOverlayApp
                 PreloadStepIcons();
                 if (!_userHidden)
                 {
-                    if (!Visible) Visible = true;
+                    if (!Visible)
+                    {
+                        Visible = true;
+                        ApplyClickThrough(_isLocked);
+                    }
                     TopMost = true;
                 }
                 Invalidate();
