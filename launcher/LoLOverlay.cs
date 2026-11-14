@@ -22,17 +22,32 @@ namespace LoLOverlayApp
         private const int WS_EX_NOACTIVATE = 0x08000000;
         private const int GWL_EXSTYLE = -20;
 
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
         private const int WM_HOTKEY = 0x0312;
         private const int MOD_CONTROL = 0x0002;
         private const int MOD_SHIFT = 0x0004;
         private const int HOTKEY_TOGGLE_VIS = 1;
         private const int HOTKEY_TOGGLE_LOCK = 2;
 
+        private const int WM_SETCURSOR = 0x0020;
+        private const int WM_NCHITTEST = 0x0084;
+        private const int HTCAPTION = 2;
+        private const int WM_NCLBUTTONUP = 0x00A2;
+        private const int WM_EXITSIZEMOVE = 0x0232;
+
         [DllImport("user32.dll")]
         private static extern int GetWindowLong(IntPtr hwnd, int index);
 
         [DllImport("user32.dll")]
         private static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
@@ -52,10 +67,10 @@ namespace LoLOverlayApp
         private bool _isDemo = false;
         private bool _userHidden = false;
         private bool _isDragging = false;
+        private bool _hasInitialPosition = false;
         private float _scale = 1.0f;
         private Point _dragStartMouse;
         private Point _dragStartForm;
-        private string _lastConfigSnapshot = "";
 
         // Hextech subtle translucent palette
         private static readonly Color ColInk = Color.FromArgb(6, 13, 16);
@@ -85,8 +100,9 @@ namespace LoLOverlayApp
             MouseDown += OnOverlayMouseDown;
             MouseMove += OnOverlayMouseMove;
             MouseUp += OnOverlayMouseUp;
+            MouseEnter += (s, e) => { if (!_isLocked) Cursor = Cursors.SizeAll; };
 
-            _pollTimer = new System.Windows.Forms.Timer { Interval = 1400 };
+            _pollTimer = new System.Windows.Forms.Timer { Interval = 1000 };
             _pollTimer.Tick += (s, e) => RefreshData();
             _pollTimer.Start();
         }
@@ -139,8 +155,28 @@ namespace LoLOverlayApp
                     ApplyClickThrough(_isLocked);
                     Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
                     Invalidate();
+                    if (_isLocked)
+                    {
+                        SaveOverlayPosition();
+                    }
                 }
             }
+            else if (m.Msg == WM_NCHITTEST && !_isLocked)
+            {
+                m.Result = (IntPtr)HTCAPTION;
+                return;
+            }
+            else if (m.Msg == WM_SETCURSOR && !_isLocked)
+            {
+                Cursor.Current = Cursors.SizeAll;
+                m.Result = (IntPtr)1;
+                return;
+            }
+            else if (m.Msg == WM_EXITSIZEMOVE || (m.Msg == WM_NCLBUTTONUP && !_isLocked))
+            {
+                SaveOverlayPosition();
+            }
+
             base.WndProc(ref m);
         }
 
@@ -149,10 +185,11 @@ namespace LoLOverlayApp
             if (!IsHandleCreated) return;
             int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
             if (clickThrough)
-                exStyle |= WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+                exStyle |= (WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
             else
-                exStyle &= ~WS_EX_TRANSPARENT;
+                exStyle &= ~(WS_EX_TRANSPARENT | WS_EX_NOACTIVATE);
             SetWindowLong(Handle, GWL_EXSTYLE, exStyle);
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
 
         private void OnOverlayMouseDown(object sender, MouseEventArgs e)
@@ -188,7 +225,7 @@ namespace LoLOverlayApp
                 var req = (HttpWebRequest)WebRequest.Create(BaseUrl + "/api/config");
                 req.Method = "POST";
                 req.ContentType = "application/json";
-                req.Timeout = 800;
+                req.Timeout = 1000;
                 byte[] bytes = Encoding.UTF8.GetBytes(jsonBody);
                 using (Stream s = req.GetRequestStream()) s.Write(bytes, 0, bytes.Length);
                 using (req.GetResponse()) { }
@@ -200,77 +237,88 @@ namespace LoLOverlayApp
         {
             try
             {
-                string cfgRaw = HttpGetString(BaseUrl + "/api/bootstrap");
-                if (!string.IsNullOrEmpty(cfgRaw) && cfgRaw != _lastConfigSnapshot)
+                string url = BaseUrl + "/api/live-overlay" + (_isDemo ? "?demo=1" : "");
+                string raw = HttpGetString(url);
+                if (!string.IsNullOrEmpty(raw))
                 {
-                    _lastConfigSnapshot = cfgRaw;
-                    var boot = _json.Deserialize<Dictionary<string, object>>(cfgRaw);
-                    var cfg = boot != null && boot.ContainsKey("config")
-                        ? boot["config"] as Dictionary<string, object>
-                        : null;
-                    if (cfg != null)
+                    _state = _json.Deserialize<Dictionary<string, object>>(raw);
+                }
+
+                Dictionary<string, object> cfg = null;
+                if (_state != null && _state.ContainsKey("overlayConfig"))
+                {
+                    cfg = _state["overlayConfig"] as Dictionary<string, object>;
+                }
+                if (cfg == null)
+                {
+                    string cfgRaw = HttpGetString(BaseUrl + "/api/overlay/config");
+                    if (!string.IsNullOrEmpty(cfgRaw))
                     {
-                        bool cfgDemo = cfg.ContainsKey("overlayDemo") && Convert.ToBoolean(cfg["overlayDemo"]);
-                        bool cfgLocked = !cfg.ContainsKey("overlayLocked") || Convert.ToBoolean(cfg["overlayLocked"]);
-                        _isDemo = cfgDemo;
-                        _pollTimer.Interval = _isDemo ? 750 : 1400;
+                        cfg = _json.Deserialize<Dictionary<string, object>>(cfgRaw);
+                    }
+                }
 
-                        if (cfgLocked != _isLocked)
+                if (cfg != null)
+                {
+                    bool cfgDemo = cfg.ContainsKey("overlayDemo") && Convert.ToBoolean(cfg["overlayDemo"]);
+                    bool cfgLocked = !cfg.ContainsKey("overlayLocked") || Convert.ToBoolean(cfg["overlayLocked"]);
+                    _isDemo = cfgDemo;
+                    _pollTimer.Interval = _isDemo ? 500 : 1200;
+
+                    if (cfgLocked != _isLocked)
+                    {
+                        _isLocked = cfgLocked;
+                        ApplyClickThrough(_isLocked);
+                        Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
+                        Invalidate();
+                    }
+
+                    if (cfg.ContainsKey("overlayScale") && cfg["overlayScale"] != null)
+                    {
+                        float sc = (float)Convert.ToDouble(cfg["overlayScale"]);
+                        _scale = Math.Max(0.75f, Math.Min(1.45f, sc));
+                    }
+
+                    if (cfg.ContainsKey("overlayOpacity") && cfg["overlayOpacity"] != null)
+                    {
+                        double op = Convert.ToDouble(cfg["overlayOpacity"]);
+                        Opacity = Math.Max(0.30, Math.Min(0.95, op));
+                    }
+
+                    int targetW = (int)Math.Round(BaseW * _scale);
+                    int targetH = (int)Math.Round(BaseH * _scale);
+                    if (Width != targetW || Height != targetH)
+                    {
+                        int rightEdge = Right;
+                        Width = targetW;
+                        Height = targetH;
+                        if (_isLocked && (Location.X + Width > Screen.PrimaryScreen.WorkingArea.Right))
                         {
-                            _isLocked = cfgLocked;
-                            ApplyClickThrough(_isLocked);
-                            Cursor = _isLocked ? Cursors.Default : Cursors.SizeAll;
-                            Invalidate();
+                            Location = new Point(rightEdge - Width, Location.Y);
                         }
+                    }
 
-                        if (cfg.ContainsKey("overlayScale") && cfg["overlayScale"] != null)
+                    if (_isLocked && !_isDragging)
+                    {
+                        if (cfg.ContainsKey("overlayX") && cfg.ContainsKey("overlayY")
+                            && cfg["overlayX"] != null && cfg["overlayY"] != null)
                         {
-                            float sc = (float)Convert.ToDouble(cfg["overlayScale"]);
-                            _scale = Math.Max(0.75f, Math.Min(1.45f, sc));
-                        }
-
-                        if (cfg.ContainsKey("overlayOpacity") && cfg["overlayOpacity"] != null)
-                        {
-                            double op = Convert.ToDouble(cfg["overlayOpacity"]);
-                            Opacity = Math.Max(0.30, Math.Min(0.95, op));
-                        }
-
-                        int targetW = (int)Math.Round(BaseW * _scale);
-                        int targetH = (int)Math.Round(BaseH * _scale);
-                        if (Width != targetW || Height != targetH)
-                        {
-                            int rightEdge = Right;
-                            Width = targetW;
-                            Height = targetH;
-                            if (!_isDragging && (Location.X + Width > Screen.PrimaryScreen.WorkingArea.Right))
+                            int ox = Convert.ToInt32(cfg["overlayX"]);
+                            int oy = Convert.ToInt32(cfg["overlayY"]);
+                            if (ox >= 0 && oy >= 0 && (Location.X != ox || Location.Y != oy))
                             {
-                                Location = new Point(rightEdge - Width, Location.Y);
+                                Location = new Point(ox, oy);
                             }
                         }
-
-                        if (!_isDragging)
+                        else if (!_hasInitialPosition)
                         {
-                            if (cfg.ContainsKey("overlayX") && cfg.ContainsKey("overlayY")
-                                && cfg["overlayX"] != null && cfg["overlayY"] != null)
-                            {
-                                int ox = Convert.ToInt32(cfg["overlayX"]);
-                                int oy = Convert.ToInt32(cfg["overlayY"]);
-                                if (ox >= 0 && oy >= 0) Location = new Point(ox, oy);
-                            }
-                            else
-                            {
-                                Rectangle area = Screen.PrimaryScreen.WorkingArea;
-                                Location = new Point(area.Right - Width - 14, 74);
-                            }
+                            Rectangle area = Screen.PrimaryScreen.WorkingArea;
+                            Location = new Point(area.Right - Width - 14, 74);
+                            _hasInitialPosition = true;
                         }
                     }
                 }
 
-                string url = BaseUrl + "/api/live-overlay" + (_isDemo ? "?demo=1" : "");
-                string raw = HttpGetString(url);
-                if (string.IsNullOrEmpty(raw)) return;
-
-                _state = _json.Deserialize<Dictionary<string, object>>(raw);
                 bool inGame = _state != null && _state.ContainsKey("inGame") && Convert.ToBoolean(_state["inGame"]);
 
                 if (!inGame)

@@ -822,6 +822,24 @@ async function handleApi(req, res, urlObj) {
     return sendJson(res, 200, analysis);
   }
 
+  if (req.method === 'GET' && pathname === '/api/config') {
+    const cfg = syncEngine.loadConfig();
+    return sendJson(res, 200, { config: cfg });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/overlay/config') {
+    const cfg = syncEngine.loadConfig();
+    return sendJson(res, 200, {
+      overlayAutoInGame: cfg.overlayAutoInGame !== false,
+      overlayDemo: Boolean(cfg.overlayDemo),
+      overlayLocked: cfg.overlayLocked !== false,
+      overlayScale: cfg.overlayScale ?? 1.0,
+      overlayOpacity: cfg.overlayOpacity ?? 0.68,
+      overlayX: cfg.overlayX ?? null,
+      overlayY: cfg.overlayY ?? null
+    });
+  }
+
   if (req.method === 'POST' && pathname === '/api/config') {
     const body = await readRequestBody(req);
     const allowed = {};
@@ -885,6 +903,16 @@ async function handleApi(req, res, urlObj) {
   if (req.method === 'GET' && pathname === '/api/live-overlay') {
     const demo = urlObj.searchParams.get('demo') === '1';
     const data = await liveOverlay.getLiveOverlayState({ demo });
+    const cfg = syncEngine.loadConfig();
+    data.overlayConfig = {
+      overlayAutoInGame: cfg.overlayAutoInGame !== false,
+      overlayDemo: Boolean(cfg.overlayDemo),
+      overlayLocked: cfg.overlayLocked !== false,
+      overlayScale: cfg.overlayScale ?? 1.0,
+      overlayOpacity: cfg.overlayOpacity ?? 0.68,
+      overlayX: cfg.overlayX ?? null,
+      overlayY: cfg.overlayY ?? null
+    };
     return sendJson(res, 200, data);
   }
 
