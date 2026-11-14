@@ -2236,6 +2236,174 @@ select {
   color: #0070ba;
 }
 
+/* ==================== SPECIAL BRANDED NAV BUTTONS ==================== */
+
+/* Advisor x Torneo Blitz Button */
+.nav-btn-torneo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.8) 0%, rgba(24, 16, 45, 0.95) 55%, rgba(180, 83, 9, 0.5) 100%);
+  border: 1.5px solid #c084fc;
+  box-shadow: 0 0 14px rgba(192, 132, 252, 0.4), 0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+  position: relative;
+  line-height: 1;
+}
+
+.nav-btn-torneo:hover {
+  transform: translateY(-1px);
+  border-color: #fbbf24;
+  box-shadow: 0 0 22px rgba(192, 132, 252, 0.7), 0 0 12px rgba(251, 191, 36, 0.6), 0 4px 10px rgba(0, 0, 0, 0.6);
+}
+
+.nav-btn-torneo.on {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.9) 0%, rgba(45, 20, 80, 0.96) 50%, rgba(217, 119, 6, 0.8) 100%);
+  border-color: #fde047;
+  box-shadow: 0 0 24px rgba(251, 191, 36, 0.8), 0 0 14px rgba(192, 132, 252, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.25);
+}
+
+.torneo-svg-logo {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.65));
+}
+
+.torneo-brand-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.torneo-brand-text .brand-adv {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+}
+
+.torneo-brand-text .brand-cross {
+  font-size: 11px;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.85);
+  margin: 0 1px;
+}
+
+.torneo-brand-text .brand-torneo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: #f472b6;
+  background: linear-gradient(135deg, #f472b6, #c084fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.02em;
+}
+
+.torneo-brand-text .brand-blitz {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+  letter-spacing: 0.03em;
+}
+
+/* Road To Button (PayPal Inspired Gold Style) */
+.nav-btn-roadto {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 15px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #fce289 0%, #f6d578 40%, #c99b36 100%);
+  border: 1.5px solid #ffe49c;
+  box-shadow: 0 0 14px rgba(246, 213, 120, 0.55), 0 2px 7px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  position: relative;
+  line-height: 1;
+}
+
+.nav-btn-roadto:hover {
+  transform: translateY(-1px);
+  border-color: #ffffff;
+  box-shadow: 0 0 24px rgba(246, 213, 120, 0.9), 0 4px 12px rgba(0, 0, 0, 0.55);
+}
+
+.nav-btn-roadto.on {
+  background: linear-gradient(135deg, #fff2a3 0%, #f9dc82 40%, #d8a436 100%);
+  border-color: #ffffff;
+  box-shadow: 0 0 28px rgba(246, 213, 120, 0.95), 0 0 12px rgba(0, 112, 186, 0.45), inset 0 0 10px rgba(255, 255, 255, 0.55);
+}
+
+.roadto-svg-logo {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+.roadto-brand-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 14.5px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.roadto-brand-text .rt-road {
+  color: #003087; /* PayPal signature navy */
+  font-family: var(--font-display);
+  font-weight: 900;
+}
+
+.roadto-brand-text .rt-to {
+  color: #0070ba; /* PayPal signature cyan */
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+}
+
+/* Live Counters inside both special buttons */
+.nav-live-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1.1;
+  margin-left: 2px;
+}
+
+.nav-btn-torneo .nav-live-badge {
+  background: rgba(239, 68, 68, 0.95);
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+}
+
+.nav-btn-roadto .nav-live-badge {
+  background: #003087;
+  color: #ffffff;
+  box-shadow: 0 0 6px rgba(0, 48, 135, 0.6);
+}
+
 /* ==================== ROAD TO LADDER ==================== */
 .roadto-rules-chips {
   display: flex;

@@ -2578,7 +2578,15 @@ function renderTournamentView(snap) {
   const discordAdminLocked = snap.source === 'discord' && snap.adminOnly !== false;
   const canDirectAdmin = !discordAdminLocked;
   const sourceTag = snap.source === 'discord' ? 'Discord Live' : 'Modo Local';
-  if (navTab) {
+  const torneoBadge = document.getElementById('torneoNavBadge');
+  if (torneoBadge) {
+    if (snap.active && snap.teams) {
+      torneoBadge.textContent = `${snap.teams.length}/${snap.size}`;
+      torneoBadge.classList.remove('hidden');
+    } else {
+      torneoBadge.classList.add('hidden');
+    }
+  } else if (navTab) {
     navTab.textContent = snap.active ? `TORNEO BLITZ (${snap.teams.length}/${snap.size})` : 'TORNEO BLITZ';
   }
 
@@ -2787,7 +2795,15 @@ function renderRoadToView(snap) {
   const dcMsgEl = document.getElementById('roadToDcStatusMsg');
 
   const totalCount = (snap.participants || []).length;
-  if (navTab) {
+  const roadToBadge = document.getElementById('roadToNavBadge');
+  if (roadToBadge) {
+    if (snap.active && totalCount > 0) {
+      roadToBadge.textContent = String(totalCount);
+      roadToBadge.classList.remove('hidden');
+    } else {
+      roadToBadge.classList.add('hidden');
+    }
+  } else if (navTab) {
     navTab.textContent = snap.active ? `Road To (${totalCount})` : 'Road To';
   }
   if (countEl) countEl.textContent = String(totalCount);
