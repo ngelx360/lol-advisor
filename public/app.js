@@ -1061,7 +1061,7 @@ function renderTeamTacticalSummaryHtml(teamBriefing) {
     ? `<span class="tactical-live-pill">● Partida en Vivo ${gameTimeLabel ? `(${esc(gameTimeLabel)})` : ''}</span>`
     : inChampSelect
     ? `<span class="tactical-live-pill" style="border-color:rgba(200,170,110,0.5);color:#f1db9a;background:rgba(200,170,110,0.15);">● Selección de Campeón</span>`
-    : `<span class="tactical-live-pill" style="border-color:rgba(63,208,212,0.4);color:#8df8fb;background:rgba(63,208,212,0.1);">Lectura de Equipo</span>`;
+    : `<span class="tactical-live-pill" style="border-color:rgba(63,208,212,0.4);color:#8df8fb;background:rgba(63,208,212,0.1);">Lectura de Aliados</span>`;
 
   const strategyHtml = compStrategy
     ? `<div class="tactical-comp-strategy">
@@ -1089,6 +1089,21 @@ function renderTeamTacticalSummaryHtml(teamBriefing) {
           </div>`
         : '';
 
+      const stats = m.stats;
+      const statsStripHtml = stats
+        ? `<div class="tactical-stats-strip">
+            <span class="tactical-stat-chip ${stats.winRate >= 0.5 ? 'metric-good' : 'metric-bad'}" title="Win Rate reciente">
+              ${stats.winRatePct || Math.round(stats.winRate * 100) + '%'} WR
+            </span>
+            <span class="tactical-stat-chip" title="KDA promedio">${Number(stats.kda || 0).toFixed(2)} KDA</span>
+            <span class="tactical-stat-chip" title="Súbditos por minuto">${Number(stats.csPerMin || 0).toFixed(1)} CS/m</span>
+            <span class="tactical-stat-chip" title="Participación en asesinatos (KP)">${Math.round((stats.kpPct || 0) * 100)}% KP</span>
+            ${m.role === 'support' ? `<span class="tactical-stat-chip" title="Centinelas por minuto">${Number(stats.wardsPerMin || 0).toFixed(1)} Vis/m</span>` : ''}
+          </div>`
+        : '';
+
+      const summonerLabel = m.summonerName ? esc(m.summonerName) : (isMe ? 'Tú' : 'Aliado');
+
       return `<div class="tactical-role-card ${isMe ? 'is-me' : ''}">
         <div>
           <div class="tactical-role-header">
@@ -1099,12 +1114,35 @@ function renderTeamTacticalSummaryHtml(teamBriefing) {
                 ${isMe ? '<span class="tactical-me-badge">TÚ</span>' : ''}
               </div>
               <div class="tactical-champ-name">${esc(champ?.name || 'Por seleccionar')}</div>
+              <div class="tactical-summoner-name" title="${summonerLabel}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                <span>${summonerLabel}</span>
+              </div>
             </div>
           </div>
+
           <div style="margin-top:8px;margin-bottom:6px;">
-            <span class="tactical-archetype-badge ${esc(m.badgeColor || 'neutral')}">${esc(m.archetype)}</span>
+            <span class="tactical-archetype-badge ${esc(m.strongPointColor || m.badgeColor || 'emerald')}">
+              ${esc(m.strongPointBadge || m.archetype)}
+            </span>
+            ${statsStripHtml}
           </div>
-          <div class="tactical-behavior-text">${esc(m.behavior)}</div>
+
+          <div class="tactical-strong-points-box">
+            <div class="tactical-section-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              <span>Puntos Fuertes (${esc(m.roleLabel)})</span>
+            </div>
+            <div class="tactical-strong-points-text">${esc(m.strongPointsSummary || m.behavior)}</div>
+          </div>
+
+          <div class="tactical-advice-box">
+            <div class="tactical-section-label">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              <span>${isMe ? 'Tu Plan Táctico en Línea' : 'Consejo para Coordinar con él'}</span>
+            </div>
+            <div class="tactical-advice-text">${esc(m.tacticalAdvice || m.behavior)}</div>
+          </div>
         </div>
         ${laneTendencyHtml}
       </div>`;
@@ -1121,7 +1159,7 @@ function renderTeamTacticalSummaryHtml(teamBriefing) {
           </h2>
           ${statusPill}
         </div>
-        <span class="muted" style="font-size:12px;">Lectura de ganks, rotaciones y tendencias de línea</span>
+        <span class="muted" style="font-size:12px;">Puntos fuertes de tus aliados por línea y consejos de coordinación</span>
       </div>
       ${strategyHtml}
       <div class="tactical-grid">
@@ -1215,8 +1253,6 @@ function renderBuildDetailHtml(detail, { compact }) {
 
     ${matchupBlock}
 
-    ${renderTeamTacticalSummaryHtml(detail.teamBriefing)}
-
     <div class="my-champ-two-col">
       <div class="panel my-champ-card">
         <div class="build-section">
@@ -1279,6 +1315,8 @@ function renderBuildDetailHtml(detail, { compact }) {
         </div>
       </div>
     </div>
+
+    ${renderTeamTacticalSummaryHtml(detail.teamBriefing)}
   `;
 }
 

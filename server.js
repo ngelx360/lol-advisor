@@ -19,7 +19,7 @@ const discordClient = require('./lib/discordTournamentClient');
 const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.1';
+const APP_BUILD = '2.2.2';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -627,14 +627,40 @@ async function handleApi(req, res, urlObj) {
       try { enemies = JSON.parse(urlObj.searchParams.get('enemies')); } catch {}
     }
 
+    const config = syncEngine.loadConfig();
+    const mySummonerName = config.riotAccount ? `${config.riotAccount.gameName}#${config.riotAccount.tagLine}` : '';
+    const region = config?.region || config?.riotAccount?.region || 'LAN';
+
+    if (!allies || !allies.length) {
+      try {
+        const liveState = await liveOverlay.getLiveOverlayState();
+        if (liveState?.inGame && liveState.allies?.length) {
+          allies = liveState.allies;
+          if (!enemies || !enemies.length) enemies = liveState.enemies;
+        } else {
+          const lcuState = await lcuWatcher.readLcuChampSelectState({
+            enabled: config.lcuEnabled,
+            customLockfilePath: config.lcuLockfilePath,
+            seasonData: activeSeason
+          });
+          if (lcuState?.inChampSelect && lcuState.allies?.length) {
+            allies = lcuState.allies;
+            if (!enemies || !enemies.length) enemies = lcuState.inferredEnemies;
+          }
+        }
+      } catch {}
+    }
+
     let teamBriefing = null;
     try {
-      teamBriefing = tacticalAnalyzer.analyzeTeamBriefing({
+      teamBriefing = await tacticalAnalyzer.analyzeTeamBriefing({
         seasonData: activeSeason,
         myRole: activeRole,
         myChampionId: championId,
         allies: allies || [],
-        enemies: enemies || (opponentId ? [{ championId: opponentId, role: activeRole }] : [])
+        enemies: enemies || (opponentId ? [{ championId: opponentId, role: activeRole }] : []),
+        mySummonerName,
+        region
       });
     } catch {
       teamBriefing = null;
@@ -733,12 +759,22 @@ async function handleApi(req, res, urlObj) {
       if ((!enemies || !enemies.length) && lcuState.inferredEnemies?.length) enemies = lcuState.inferredEnemies;
     }
 
-    const briefing = tacticalAnalyzer.analyzeTeamBriefing({
+    const config = syncEngine.loadConfig();
+    const mySummonerName =
+      body.mySummonerName ||
+      urlObj.searchParams.get('mySummonerName') ||
+      (config.riotAccount ? `${config.riotAccount.gameName}#${config.riotAccount.tagLine}` : '');
+    const region =
+      body.region || urlObj.searchParams.get('region') || config?.region || config?.riotAccount?.region || 'LAN';
+
+    const briefing = await tacticalAnalyzer.analyzeTeamBriefing({
       seasonData: activeSeason,
       myRole: myRole || 'mid',
       myChampionId,
       allies: allies || [],
-      enemies: enemies || []
+      enemies: enemies || [],
+      mySummonerName,
+      region
     });
 
     return sendJson(res, 200, {

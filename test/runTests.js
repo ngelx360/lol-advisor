@@ -140,12 +140,12 @@ async function runHttpIntegrationTests() {
     // 0. Health check
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
     assert.strictEqual(health.ok, true);
-    assert.strictEqual(health.appBuild, '2.2.1');
+    assert.strictEqual(health.appBuild, '2.2.2');
 
     // 0b. Cloud Auto-Update check
     const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
     assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
-    assert.strictEqual(updateCheck.currentVersion, '2.2.1');
+    assert.strictEqual(updateCheck.currentVersion, '2.2.2');
 
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());
@@ -268,6 +268,12 @@ async function runHttpIntegrationTests() {
     assert.strictEqual(briefingRes.members.length, 5, 'Briefing must return all 5 roles');
     const jgCard = briefingRes.members.find((m) => m.role === 'jungle');
     assert(jgCard.archetype.includes('Ganker'), 'Lee Sin must be early ganker archetype');
+    assert(jgCard.strongPointBadge, 'Card must include strongPointBadge');
+    assert(jgCard.strongPointsSummary, 'Card must include strongPointsSummary');
+    assert(jgCard.tacticalAdvice, 'Card must include tacticalAdvice');
+    assert(jgCard.stats && typeof jgCard.stats.winRate === 'number', 'Card must include stats with winRate');
+    assert(typeof jgCard.stats.csPerMin === 'number', 'Card must include stats with csPerMin');
+    assert(typeof jgCard.stats.kpPct === 'number', 'Card must include stats with kpPct');
     const topCard = briefingRes.members.find((m) => m.role === 'top');
     assert.strictEqual(topCard.laneTendency?.status, 'loses', 'Olaf vs Aatrox top must detect loses status');
 

@@ -27,12 +27,12 @@
     "region": "LAN"
   },
   "overlayAutoInGame": true,
-  "overlayDemo": true,
-  "overlayLocked": false,
+  "overlayDemo": false,
+  "overlayLocked": true,
   "overlayScale": 1,
   "overlayOpacity": 0.68,
-  "overlayX": null,
-  "overlayY": null,
+  "overlayX": 1664,
+  "overlayY": 318,
   "discord": {
     "enabled": true,
     "bridgeUrl": "https://lol-advisor.ngelx360.workers.dev",
