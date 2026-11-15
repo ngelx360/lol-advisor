@@ -20,7 +20,7 @@ const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 const telemetryClient = require('./lib/telemetryClient');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.3';
+const APP_BUILD = '2.2.4';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -547,10 +547,30 @@ async function handleApi(req, res, urlObj) {
 
   if (req.method === 'GET' && pathname === '/api/champion-build') {
     const championId = Number(urlObj.searchParams.get('championId'));
-    const role = urlObj.searchParams.get('role') || 'mid';
-    const opponentId = urlObj.searchParams.get('opponentId')
+    const roleParam = urlObj.searchParams.get('role') || 'mid';
+    const isAramExplicit = urlObj.searchParams.get('isAram');
+    let opponentId = urlObj.searchParams.get('opponentId')
       ? Number(urlObj.searchParams.get('opponentId'))
       : null;
+
+    let isAram = false;
+    if (isAramExplicit === 'true' || urlObj.searchParams.get('mode') === 'ARAM' || roleParam === 'ARAM') {
+      isAram = true;
+    } else if (isAramExplicit === 'false' || opponentId) {
+      isAram = false;
+    } else {
+      // Auto-detect from active live game or LCU if neither isAram nor opponentId was specified
+      try {
+        const liveState = await liveOverlay.getLiveOverlayState();
+        if (liveState?.inGame && liveState.isAram) {
+          isAram = true;
+        }
+      } catch {}
+    }
+
+    if (isAram) {
+      opponentId = null;
+    }
 
     const activeSeason = syncEngine.getActiveSeasonData();
     if (!activeSeason || !championId) {
@@ -564,7 +584,7 @@ async function handleApi(req, res, urlObj) {
     }
 
     // Determine best lane entry if requested role lacks data
-    let activeRole = role;
+    let activeRole = (isAram || roleParam === 'ARAM') ? 'mid' : roleParam;
     let laneEntry = activeSeason.lanes?.[activeRole]?.[championId];
     if (!laneEntry) {
       for (const l of syncEngine.LANES) {
@@ -577,7 +597,7 @@ async function handleApi(req, res, urlObj) {
     }
 
     let matchupDetail = null;
-    if (opponentId && activeRole) {
+    if (!isAram && opponentId && activeRole) {
       try {
         matchupDetail = await syncEngine.getMatchupDetailCached(
           activeSeason,
@@ -601,14 +621,14 @@ async function handleApi(req, res, urlObj) {
     }
 
     const rawBuild =
-      matchupDetail?.build?.runes?.length && matchupDetail?.build?.coreItems?.length
+      (!isAram && matchupDetail?.build?.runes?.length && matchupDetail?.build?.coreItems?.length)
         ? matchupDetail.build
         : generalBuild || matchupDetail?.build;
     const hydratedBuild = hydrateBuild(rawBuild, ddAssets);
 
     // Top counters & easiest matchups in this lane from Season DB
     const countersList = [];
-    if (laneEntry?.counters) {
+    if (!isAram && laneEntry?.counters) {
       for (const [oppStr, stats] of Object.entries(laneEntry.counters)) {
         const oid = Number(oppStr);
         if (!stats || stats.play < 30 || oid === championId) continue;
@@ -624,10 +644,10 @@ async function handleApi(req, res, urlObj) {
         });
       }
     }
-    const hardMatchups = [...countersList].sort((a, b) => a.winRate - b.winRate).slice(0, 5);
-    const goodMatchups = [...countersList].sort((a, b) => b.winRate - a.winRate).slice(0, 5);
+    const hardMatchups = isAram ? [] : [...countersList].sort((a, b) => a.winRate - b.winRate).slice(0, 5);
+    const goodMatchups = isAram ? [] : [...countersList].sort((a, b) => b.winRate - a.winRate).slice(0, 5);
 
-    const opponentMeta = opponentId ? activeSeason.champions[opponentId] || null : null;
+    const opponentMeta = (!isAram && opponentId) ? activeSeason.champions[opponentId] || null : null;
 
     let allies = null;
     let enemies = null;
@@ -642,7 +662,7 @@ async function handleApi(req, res, urlObj) {
     const mySummonerName = config.riotAccount ? `${config.riotAccount.gameName}#${config.riotAccount.tagLine}` : '';
     const region = config?.region || config?.riotAccount?.region || 'LAN';
 
-    if (!allies || !allies.length) {
+    if (!isAram && (!allies || !allies.length)) {
       try {
         const liveState = await liveOverlay.getLiveOverlayState();
         if (liveState?.inGame && liveState.allies?.length) {
@@ -663,25 +683,29 @@ async function handleApi(req, res, urlObj) {
     }
 
     let teamBriefing = null;
-    try {
-      teamBriefing = await tacticalAnalyzer.analyzeTeamBriefing({
-        seasonData: activeSeason,
-        myRole: activeRole,
-        myChampionId: championId,
-        allies: allies || [],
-        enemies: enemies || (opponentId ? [{ championId: opponentId, role: activeRole }] : []),
-        mySummonerName,
-        region
-      });
-    } catch {
-      teamBriefing = null;
+    if (!isAram) {
+      try {
+        teamBriefing = await tacticalAnalyzer.analyzeTeamBriefing({
+          seasonData: activeSeason,
+          myRole: activeRole,
+          myChampionId: championId,
+          allies: allies || [],
+          enemies: enemies || (opponentId ? [{ championId: opponentId, role: activeRole }] : []),
+          mySummonerName,
+          region
+        });
+      } catch {
+        teamBriefing = null;
+      }
     }
 
     return sendJson(res, 200, {
       patch: activeSeason.patch,
       champion: champ,
-      role: activeRole,
-      stats: laneEntry
+      role: isAram ? 'ARAM' : activeRole,
+      isAram,
+      gameMode: isAram ? 'ARAM' : 'CLASSIC',
+      stats: isAram ? null : (laneEntry
         ? {
             winRate: laneEntry.winRate,
             pickRate: laneEntry.pickRate,
@@ -693,7 +717,7 @@ async function handleApi(req, res, urlObj) {
             play: laneEntry.play,
             trendWin: laneEntry.trendWin || []
           }
-        : null,
+        : null),
       matchup: opponentMeta
         ? {
             opponent: opponentMeta,
@@ -948,8 +972,9 @@ async function handleApi(req, res, urlObj) {
   }
 
   if (req.method === 'GET' && pathname === '/api/live-overlay') {
-    const demo = urlObj.searchParams.get('demo') === '1';
-    const data = await liveOverlay.getLiveOverlayState({ demo });
+    const demo = urlObj.searchParams.get('demo') === '1' || urlObj.searchParams.get('demo') === 'true';
+    const isAram = urlObj.searchParams.get('isAram') === 'true' || urlObj.searchParams.get('mode') === 'ARAM';
+    const data = await liveOverlay.getLiveOverlayState({ demo, isAram });
     const cfg = syncEngine.loadConfig();
     data.overlayConfig = {
       overlayAutoInGame: cfg.overlayAutoInGame !== false,

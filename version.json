@@ -1,8 +1,8 @@
 {
-  "version": "2.2.3",
+  "version": "2.2.4",
   "patch": "16.22",
-  "title": "LoL Advisor v2.2.3",
-  "changelog": "Telemetría anónima en tiempo real conectada a Cloudflare (contador de jugadores online en barra superior y panel de Seasons & Datos).",
+  "title": "LoL Advisor v2.2.4",
+  "changelog": "Detección inteligente de ARAM (Abismo de los Lamentos): modo sin counters de línea con enfoque exclusivo en tu campeón, runas óptimas y build recomendada.",
   "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
   "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
 }

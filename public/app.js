@@ -250,10 +250,12 @@ function renderTopBar() {
     txt.textContent = 'Modo Manual';
   } else if (state.isInGame) {
     ind.classList.add('in-champ-select');
-    txt.textContent = `En Partida (${state.liveGame?.gameTimeLabel || '0:00'})`;
+    txt.textContent = state.liveGame?.isAram
+      ? `ARAM en Curso ❄️ (${state.liveGame?.gameTimeLabel || '0:00'})`
+      : `En Partida (${state.liveGame?.gameTimeLabel || '0:00'})`;
   } else if (state.lcu.inChampSelect) {
     ind.classList.add('in-champ-select');
-    txt.textContent = 'LCU: En Champ Select';
+    txt.textContent = state.lcu.isAram ? 'LCU: ARAM Champ Select ❄️' : 'LCU: En Champ Select';
   } else if (state.lcu.connected) {
     ind.classList.add('online');
     txt.textContent = 'LCU: Conectado';
@@ -318,11 +320,22 @@ async function pollLcu() {
 
     if (lcu.inChampSelect) {
       let draftChanged = false;
+      const isAram = Boolean(lcu.isAram);
+      state.draft.isAram = isAram;
+
+      if (isAram) {
+        state.draft.enemyLanerId = null;
+        state.draft.enemies = [];
+      }
 
       if (!state.lastSeenInChampSelect) {
         state.manualEnemyOverride = false;
         state.manualModeChosen = false;
-        switchView('draft');
+        if (isAram) {
+          switchView('my-champion');
+        } else {
+          switchView('draft');
+        }
       }
 
       if (lcu.myRole && lcu.myRole !== state.draft.myRole) {
@@ -386,6 +399,7 @@ async function pollLcu() {
       if (state.lastSeenInChampSelect) {
         state.lastSeenInChampSelect = false;
         state.lastSeenLcuChampId = null;
+        if (!state.isInGame) state.draft.isAram = false;
       }
 
       // Live In-Game detection
@@ -394,6 +408,11 @@ async function pollLcu() {
         if (live && live.inGame) {
           state.isInGame = true;
           state.liveGame = live;
+          if (live.isAram) {
+            state.draft.isAram = true;
+            state.draft.enemyLanerId = null;
+            state.draft.enemies = [];
+          }
 
           let liveChanged = false;
           if (live.role && live.role !== state.draft.myRole) {
@@ -438,6 +457,9 @@ async function pollLcu() {
           state.isInGame = false;
           state.lastSeenInGame = false;
           state.liveGame = null;
+          if (!state.lcu?.inChampSelect) {
+            state.draft.isAram = false;
+          }
         }
       } catch {
         // Live overlay polling ignored
@@ -890,13 +912,18 @@ async function selectPreviewChampion(championId) {
   panel.innerHTML = '<div class="loading-state">Cargando build y runas...</div>';
 
   try {
+    const isAram = Boolean(state.draft.isAram || state.lcu?.isAram || state.liveGame?.isAram);
     const qs = new URLSearchParams({
       championId: String(championId),
-      role: state.draft.myRole
+      role: isAram ? 'ARAM' : state.draft.myRole
     });
-    if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
-    if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
-    if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
+    if (isAram) {
+      qs.set('isAram', 'true');
+    } else {
+      if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
+      if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
+      if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
+    }
     const detail = await apiJson(`/api/champion-build?${qs.toString()}`);
     panel.innerHTML = renderBuildDetailHtml(detail, { compact: true });
   } catch (err) {
@@ -921,13 +948,18 @@ async function loadMyChampionTab(championId) {
   container.innerHTML = '<div class="panel loading-state">Cargando mejor build, runas y datos de línea...</div>';
 
   try {
+    const isAram = Boolean(state.draft.isAram || state.lcu?.isAram || state.liveGame?.isAram);
     const qs = new URLSearchParams({
       championId: String(championId),
-      role: state.draft.myRole
+      role: isAram ? 'ARAM' : state.draft.myRole
     });
-    if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
-    if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
-    if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
+    if (isAram) {
+      qs.set('isAram', 'true');
+    } else {
+      if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
+      if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
+      if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
+    }
     const detail = await apiJson(`/api/champion-build?${qs.toString()}`);
     state.myChampionBuildData = detail;
     container.innerHTML = renderBuildDetailHtml(detail, { compact: false });
@@ -1204,21 +1236,33 @@ function renderTeamTacticalSummaryHtml(teamBriefing) {
 
 function renderBuildDetailHtml(detail, { compact }) {
   const { champion, role, stats, matchup, build, hardMatchups, goodMatchups, patch } = detail;
+  const isAram = Boolean(detail.isAram || detail.gameMode === 'ARAM' || role === 'ARAM');
   const spellsGroup = build?.summonerSpells?.[0];
 
-  const matchupBlock = matchup
-    ? `<div class="matchup-callout">
-        <div class="matchup-callout-top">
-          <span><strong>Vs ${esc(matchup.opponent.name)}</strong> (${esc(ROLE_LABELS[role] || role)})</span>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            ${matchup.winRate !== null ? `<span class="mono ${wrClass(matchup.winRate)}"><strong>${pct(matchup.winRate, 2)} WR</strong> (${matchup.play.toLocaleString()})</span>` : ''}
-            ${advBadgeHtml(matchup.soloKillAdvantage, 'Solo Kill 1v1')}
-            ${advBadgeHtml(matchup.laneAdvantage, 'Línea')}
+  const aramBanner = `
+    <div class="aram-mode-banner">
+      <span class="aram-banner-icon">❄️</span>
+      <div class="aram-banner-content">
+        <div class="aram-banner-title">Modo ARAM Detectado (Abismo de los Lamentos)</div>
+        <div class="aram-banner-sub">Partida 5v5 en línea única: Sin counters de línea ni emparejamiento 1v1. Se muestra tu campeón y build óptima.</div>
+      </div>
+    </div>`;
+
+  const matchupBlock = isAram
+    ? aramBanner
+    : (matchup
+      ? `<div class="matchup-callout">
+          <div class="matchup-callout-top">
+            <span><strong>Vs ${esc(matchup.opponent.name)}</strong> (${esc(ROLE_LABELS[role] || role)})</span>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              ${matchup.winRate !== null ? `<span class="mono ${wrClass(matchup.winRate)}"><strong>${pct(matchup.winRate, 2)} WR</strong> (${matchup.play.toLocaleString()})</span>` : ''}
+              ${advBadgeHtml(matchup.soloKillAdvantage, 'Solo Kill 1v1')}
+              ${advBadgeHtml(matchup.laneAdvantage, 'Línea')}
+            </div>
           </div>
-        </div>
-        ${matchup.tip ? `<div class="tip-box"><strong>Tip OP.GG:</strong> ${esc(matchup.tip)}</div>` : ''}
-      </div>`
-    : '';
+          ${matchup.tip ? `<div class="tip-box"><strong>Tip OP.GG:</strong> ${esc(matchup.tip)}</div>` : ''}
+        </div>`
+      : '');
 
   if (compact) {
     return `
@@ -1227,7 +1271,7 @@ function renderBuildDetailHtml(detail, { compact }) {
           <img src="${esc(champion.iconUrl)}" alt="${esc(champion.name)}" />
           <div>
             <h3>${esc(champion.name)}</h3>
-            <div class="metric-sub">${esc(ROLE_LABELS[role] || role)} · Parche ${esc(patch)} · WR ${pct(stats?.winRate, 1)}</div>
+            <div class="metric-sub">${isAram ? '❄️ ARAM · Abismo de los Lamentos' : `${esc(ROLE_LABELS[role] || role)} · Parche ${esc(patch)} · WR ${pct(stats?.winRate, 1)}`}</div>
           </div>
         </div>
         <button class="ghost on" onclick="chooseMyChampion(${champion.id}, true)">Fijar en Mi Campeón</button>
@@ -1235,7 +1279,7 @@ function renderBuildDetailHtml(detail, { compact }) {
       ${matchupBlock}
       <div class="build-section">
         <div class="build-section-title" style="align-items:center;">
-          <span>Mejores Runas</span>
+          <span>Mejores Runas ${isAram ? '(ARAM)' : ''}</span>
           ${build?.runes?.[0] ? `<button class="ghost on" style="padding:3px 9px;font-size:11.5px;" onclick="importRunesToClient(this, 'preview')">Pegar Runas a LoL</button>` : ''}
         </div>
         ${renderRunesSection(build, champion.name, 'preview')}
@@ -1260,27 +1304,46 @@ function renderBuildDetailHtml(detail, { compact }) {
       <div class="my-champ-hero-left">
         <div class="mvphex-sm"><img src="${esc(champion.iconUrl)}" alt="${esc(champion.name)}" /></div>
         <div>
-          <h1>${esc(champion.name)} <span class="tier-badge tier-${stats?.tier || 3}">Tier ${esc(stats?.tierLabel || 'A')}</span></h1>
-          <div class="muted">${esc(ROLE_LABELS[role] || role)} · Parche ${esc(patch)} ${matchup ? `· Build optimizada vs ${esc(matchup.opponent.name)}` : '· Build estándar del parche'}</div>
+          <h1>${esc(champion.name)} ${isAram ? '<span class="tier-badge" style="background:rgba(56,189,248,0.2);color:#38bdf8;border:1px solid rgba(56,189,248,0.4);">Modo ARAM ❄️</span>' : `<span class="tier-badge tier-${stats?.tier || 3}">Tier ${esc(stats?.tierLabel || 'A')}</span>`}</h1>
+          <div class="muted">${isAram ? `❄️ Modo ARAM · Abismo de los Lamentos · Parche ${esc(patch)} · Build 5v5` : `${esc(ROLE_LABELS[role] || role)} · Parche ${esc(patch)} ${matchup ? `· Build optimizada vs ${esc(matchup.opponent.name)}` : '· Build estándar del parche'}`}</div>
         </div>
       </div>
       <div class="my-champ-stats-row">
-        <div class="stat-pill-box">
-          <div class="micro-label">Win Rate</div>
-          <div class="val ${wrClass(stats?.winRate)}">${pct(stats?.winRate, 2)}</div>
-        </div>
-        <div class="stat-pill-box">
-          <div class="micro-label">Pick Rate</div>
-          <div class="val">${pct(stats?.pickRate, 1)}</div>
-        </div>
-        <div class="stat-pill-box">
-          <div class="micro-label">Ban Rate</div>
-          <div class="val">${pct(stats?.banRate, 1)}</div>
-        </div>
-        <div class="stat-pill-box">
-          <div class="micro-label">KDA</div>
-          <div class="val">${Number(stats?.kda || 0).toFixed(2)}</div>
-        </div>
+        ${isAram ? `
+          <div class="stat-pill-box">
+            <div class="micro-label">Modo</div>
+            <div class="val" style="color:var(--accent-ice, #38bdf8);">ARAM 5v5</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">Mapa</div>
+            <div class="val">Abismo</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">Build</div>
+            <div class="val" style="color:var(--accent-ice, #38bdf8);">Óptima</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">Counters</div>
+            <div class="val" style="color:var(--muted);">Sin línea</div>
+          </div>
+        ` : `
+          <div class="stat-pill-box">
+            <div class="micro-label">Win Rate</div>
+            <div class="val ${wrClass(stats?.winRate)}">${pct(stats?.winRate, 2)}</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">Pick Rate</div>
+            <div class="val">${pct(stats?.pickRate, 1)}</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">Ban Rate</div>
+            <div class="val">${pct(stats?.banRate, 1)}</div>
+          </div>
+          <div class="stat-pill-box">
+            <div class="micro-label">KDA</div>
+            <div class="val">${Number(stats?.kda || 0).toFixed(2)}</div>
+          </div>
+        `}
       </div>
     </div>
 
@@ -1290,7 +1353,7 @@ function renderBuildDetailHtml(detail, { compact }) {
       <div class="panel my-champ-card">
         <div class="build-section">
           <div class="build-section-title" style="align-items:center;">
-            <span>Runas Óptimas (OP.GG)</span>
+            <span>Runas Óptimas ${isAram ? '(ARAM)' : '(OP.GG)'}</span>
             ${build?.runes?.[0] ? `<button class="ghost on" style="padding:4px 11px;font-size:12px;" onclick="importRunesToClient(this, 'mychamp')">Pegar Runas a LoL</button>` : ''}
           </div>
           ${renderRunesSection(build, champion.name, 'mychamp')}
@@ -1325,31 +1388,33 @@ function renderBuildDetailHtml(detail, { compact }) {
           </div>
         </div>` : ''}
 
-        <div class="build-section">
-          <div class="build-section-title"><span>Matchups Destacados (${esc(ROLE_LABELS[role] || role)})</span></div>
-          <div class="matchups-mini-list">
-            <div>
-              <div class="micro-label" style="margin-bottom:5px;">Fuerte Contra</div>
-              ${(goodMatchups || []).map((m) => `
-                <div class="mini-matchup-row">
-                  <div class="mini-matchup-row-left"><img src="${esc(m.iconUrl)}" alt="" /><span>${esc(m.name)}</span></div>
-                  <span class="mono metric-good">${pct(m.winRate, 1)}</span>
-                </div>`).join('')}
-            </div>
-            <div>
-              <div class="micro-label" style="margin-bottom:5px;">Counters Difíciles</div>
-              ${(hardMatchups || []).map((m) => `
-                <div class="mini-matchup-row">
-                  <div class="mini-matchup-row-left"><img src="${esc(m.iconUrl)}" alt="" /><span>${esc(m.name)}</span></div>
-                  <span class="mono metric-bad">${pct(m.winRate, 1)}</span>
-                </div>`).join('')}
+        ${!isAram ? `
+          <div class="build-section">
+            <div class="build-section-title"><span>Matchups Destacados (${esc(ROLE_LABELS[role] || role)})</span></div>
+            <div class="matchups-mini-list">
+              <div>
+                <div class="micro-label" style="margin-bottom:5px;">Fuerte Contra</div>
+                ${(goodMatchups || []).map((m) => `
+                  <div class="mini-matchup-row">
+                    <div class="mini-matchup-row-left"><img src="${esc(m.iconUrl)}" alt="" /><span>${esc(m.name)}</span></div>
+                    <span class="mono metric-good">${pct(m.winRate, 1)}</span>
+                  </div>`).join('')}
+              </div>
+              <div>
+                <div class="micro-label" style="margin-bottom:5px;">Counters Difíciles</div>
+                ${(hardMatchups || []).map((m) => `
+                  <div class="mini-matchup-row">
+                    <div class="mini-matchup-row-left"><img src="${esc(m.iconUrl)}" alt="" /><span>${esc(m.name)}</span></div>
+                    <span class="mono metric-bad">${pct(m.winRate, 1)}</span>
+                  </div>`).join('')}
+              </div>
             </div>
           </div>
-        </div>
+        ` : ''}
       </div>
     </div>
 
-    ${renderTeamTacticalSummaryHtml(detail.teamBriefing)}
+    ${!isAram ? renderTeamTacticalSummaryHtml(detail.teamBriefing) : ''}
   `;
 }
 

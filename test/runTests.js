@@ -140,12 +140,12 @@ async function runHttpIntegrationTests() {
     // 0. Health check
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
     assert.strictEqual(health.ok, true);
-    assert.strictEqual(health.appBuild, '2.2.3');
+    assert.strictEqual(health.appBuild, '2.2.4');
 
     // 0b. Cloud Auto-Update check
     const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
     assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
-    assert.strictEqual(updateCheck.currentVersion, '2.2.3');
+    assert.strictEqual(updateCheck.currentVersion, '2.2.4');
 
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());
@@ -283,6 +283,22 @@ async function runHttpIntegrationTests() {
     const topCard = briefingRes.members.find((m) => m.role === 'top');
     assert.strictEqual(topCard.laneTendency?.status, 'loses', 'Olaf vs Aatrox top must detect loses status');
 
+    // 6e. ARAM Mode Champion Build (No lane counters, no 1v1 matchup, no tactical briefing, complete build & runes)
+    const aramBuild = await fetch(`${baseUrl}/api/champion-build?championId=103&isAram=true&opponentId=238`).then((r) =>
+      r.json()
+    );
+    assert.strictEqual(aramBuild.isAram, true, 'ARAM build must be flagged isAram');
+    assert.strictEqual(aramBuild.gameMode, 'ARAM');
+    assert.strictEqual(aramBuild.role, 'ARAM');
+    assert.strictEqual(aramBuild.matchup, null, 'ARAM build must NOT have 1v1 matchup block');
+    assert.strictEqual(aramBuild.hardMatchups.length, 0, 'ARAM build must NOT have lane hard counters');
+    assert.strictEqual(aramBuild.goodMatchups.length, 0, 'ARAM build must NOT have lane good matchups');
+    assert.strictEqual(aramBuild.teamBriefing, null, 'ARAM build must NOT have lane-based tactical briefing');
+    assert(aramBuild.build.runes.length > 0, 'ARAM build must have runes');
+    assert(aramBuild.build.coreItems.length > 0, 'ARAM build must have core items');
+    assert(aramBuild.build.boots.length > 0, 'ARAM build must have boots');
+    assert(aramBuild.build.starterItems.length > 0, 'ARAM build must have starter items');
+
     // 7. Solo/Duo History & Coaching endpoint (SOLORANKED only)
     const prevCfg = syncEngine.loadConfig();
     try {
@@ -310,6 +326,15 @@ async function runHttpIntegrationTests() {
     assert(ov.nextItem && ov.nextItem.id > 0, 'Must identify next purchase item');
     const iconRes = await fetch(`${baseUrl}/api/item-icon/${ov.nextItem.id}.png`);
     assert.strictEqual(iconRes.status, 200, 'Must serve cached PNG item icon for overlay');
+
+    // 8a2. Live Overlay in ARAM mode (Single lane 5v5, no direct opponent, custom CS target)
+    const ovAram = await fetch(`${baseUrl}/api/live-overlay?demo=1&isAram=true`).then((r) => r.json());
+    assert.strictEqual(ovAram.inGame, true);
+    assert.strictEqual(ovAram.isAram, true);
+    assert.strictEqual(ovAram.gameMode, 'ARAM');
+    assert.strictEqual(ovAram.opponentChampion, null, 'ARAM overlay must NOT have opponentChampion');
+    assert(ovAram.counterNote.includes('ARAM'), 'ARAM overlay must show ARAM counter note');
+    assert.strictEqual(ovAram.cs.status, 'ahead');
 
     const ovSt = await fetch(`${baseUrl}/api/overlay/status`).then((r) => r.json());
     assert.strictEqual(typeof ovSt.running, 'boolean');
@@ -616,6 +641,7 @@ async function runHttpIntegrationTests() {
     assert(css.includes('.lcu-profile-badge[data-tier="EMERALD"]'), 'CSS must color LCU badge by ranked division tier');
     assert(css.includes('.enemy-counters-strip') && css.includes('.counter-card'), 'CSS must style enemy counters strip and cards');
     assert(css.includes('.team-name-glow') && css.includes('.torneo-status-hero') && css.includes('.glow-white-heading'), 'CSS must style glowing team names, registration & status');
+    assert(css.includes('.aram-mode-banner') && css.includes('.aram-banner-title'), 'CSS must style ARAM mode banner');
     assert(fs.existsSync(path.join(__dirname, '..', 'LoL Advisor.exe')), 'LoL Advisor.exe must exist');
     assert(fs.existsSync(path.join(__dirname, '..', 'LoL Overlay.exe')), 'LoL Overlay.exe must exist');
     assert(fs.existsSync(path.join(__dirname, '..', 'Instalador LoL Advisor.exe')), 'Instalador LoL Advisor.exe must exist');
