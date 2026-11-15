@@ -11,6 +11,15 @@ const DISCORD_API_BASE = 'https://discord.com/api/v10';
 const DEFAULT_TORNEO_CHANNEL = '1569830216757411911';
 const DEFAULT_ROADTO_CHANNEL = '1569855142528950282';
 
+const memoryActive = new Map();
+const memoryDau = new Map();
+
+function cleanMemoryActive(now) {
+  for (const [k, t] of memoryActive.entries()) {
+    if (now - t > 600000) memoryActive.delete(k); // 10 min TTL
+  }
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -93,6 +102,73 @@ export default {
         service: 'lol-advisor-discord-bridge',
         botConfigured: Boolean(String(env?.DISCORD_BOT_TOKEN || '').trim()),
         channelsCount: allowed.size
+      });
+    }
+
+    // Telemetry: Heartbeat Ping
+    if (request.method === 'POST' && (url.pathname === '/api/telemetry/ping' || url.pathname === '/ping')) {
+      const body = await request.json().catch(() => ({}));
+      const clientId = String(body.clientId || '').slice(0, 64);
+      const version = String(body.version || 'unknown').slice(0, 16);
+      const region = String(body.region || 'LAN').slice(0, 8).toUpperCase();
+      const now = Date.now();
+
+      cleanMemoryActive(now);
+      if (clientId) {
+        memoryActive.set(clientId, now);
+        const dayStr = new Date(now).toISOString().slice(0, 10);
+        memoryDau.set(`${dayStr}:${clientId}`, now);
+      }
+
+      let onlineCount = Math.max(1, memoryActive.size);
+
+      if (env?.TELEMETRY_KV && clientId) {
+        try {
+          const key = `active:${clientId}`;
+          await env.TELEMETRY_KV.put(key, JSON.stringify({ version, region, t: now }), { expirationTtl: 600 });
+          const today = new Date(now).toISOString().slice(0, 10);
+          const dayKey = `dau:${today}:${clientId}`;
+          await env.TELEMETRY_KV.put(dayKey, '1', { expirationTtl: 172800 });
+
+          const activeList = await env.TELEMETRY_KV.list({ prefix: 'active:', limit: 1000 });
+          if (activeList?.keys?.length) {
+            onlineCount = Math.max(1, activeList.keys.length);
+          }
+        } catch {
+          // fallback to memory count
+        }
+      }
+
+      return jsonResponse({
+        ok: true,
+        onlineNow: onlineCount,
+        serverTime: now
+      });
+    }
+
+    // Telemetry: Statistics Query
+    if (request.method === 'GET' && (url.pathname === '/api/telemetry/stats' || url.pathname === '/telemetry/stats')) {
+      const now = Date.now();
+      cleanMemoryActive(now);
+      let onlineNow = Math.max(1, memoryActive.size);
+      let todayDau = Math.max(onlineNow, memoryDau.size);
+
+      if (env?.TELEMETRY_KV) {
+        try {
+          const activeList = await env.TELEMETRY_KV.list({ prefix: 'active:', limit: 1000 });
+          if (activeList?.keys?.length) onlineNow = Math.max(1, activeList.keys.length);
+
+          const today = new Date().toISOString().slice(0, 10);
+          const dayList = await env.TELEMETRY_KV.list({ prefix: `dau:${today}:`, limit: 1000 });
+          if (dayList?.keys?.length) todayDau = Math.max(onlineNow, dayList.keys.length);
+        } catch {}
+      }
+
+      return jsonResponse({
+        ok: true,
+        onlineNow,
+        todayDau,
+        kvConfigured: Boolean(env?.TELEMETRY_KV)
       });
     }
 

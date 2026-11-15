@@ -140,17 +140,23 @@ async function runHttpIntegrationTests() {
     // 0. Health check
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
     assert.strictEqual(health.ok, true);
-    assert.strictEqual(health.appBuild, '2.2.2');
+    assert.strictEqual(health.appBuild, '2.2.3');
 
     // 0b. Cloud Auto-Update check
     const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
     assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
-    assert.strictEqual(updateCheck.currentVersion, '2.2.2');
+    assert.strictEqual(updateCheck.currentVersion, '2.2.3');
 
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());
     assert(boot.activeSeason?.patch, 'Bootstrap must return activeSeason');
     assert(boot.champions.length >= 165, 'Bootstrap must return champions');
+    assert(boot.telemetry && typeof boot.telemetry.onlineNow === 'number', 'Bootstrap must include telemetry');
+
+    // 1b. Telemetry status endpoint
+    const teleStatus = await fetch(`${baseUrl}/api/telemetry/status`).then((r) => r.json());
+    assert(typeof teleStatus.onlineNow === 'number', 'Telemetry must return onlineNow');
+    assert(teleStatus.clientId && teleStatus.clientId.length > 0, 'Telemetry must return anonymous clientId');
 
     // 2. Blind Pick / First Pick Mid (no enemyLanerId, patch_wr mode)
     const blindRecs = await fetch(`${baseUrl}/api/recommendations`, {
@@ -995,7 +1001,27 @@ async function testDiscordBridgeWorker() {
     env
   );
   assert.strictEqual(badRoadToCmd.status, 403, 'Non-RoadTo commands must be blocked in #road-to');
-  console.log('[PASS] Cloudflare Worker Discord bridge unit tests');
+
+  // Telemetry Ping & Stats tests
+  const pingRes = await worker.fetch(
+    new Request('https://bridge.test/api/telemetry/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: 'unit-test-cid', version: '2.2.2', region: 'LAN' })
+    }),
+    env
+  );
+  assert.strictEqual(pingRes.status, 200);
+  const pingJson = await pingRes.json();
+  assert.strictEqual(pingJson.ok, true);
+  assert(pingJson.onlineNow >= 1, 'Ping must return onlineNow count');
+
+  const statsRes = await worker.fetch(new Request('https://bridge.test/api/telemetry/stats'), env);
+  assert.strictEqual(statsRes.status, 200);
+  const statsJson = await statsRes.json();
+  assert.strictEqual(statsJson.ok, true);
+  assert(statsJson.onlineNow >= 1, 'Stats must return onlineNow count');
+  console.log('[PASS] Cloudflare Worker Discord bridge & telemetry unit tests');
 }
 
 async function main() {

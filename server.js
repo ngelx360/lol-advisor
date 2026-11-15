@@ -17,9 +17,10 @@ const tournamentEngine = require('./lib/tournamentEngine');
 const roadToEngine = require('./lib/roadToEngine');
 const discordClient = require('./lib/discordTournamentClient');
 const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
+const telemetryClient = require('./lib/telemetryClient');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.2';
+const APP_BUILD = '2.2.3';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -421,6 +422,15 @@ async function handleApi(req, res, urlObj) {
     }
   }
 
+  if (req.method === 'GET' && pathname === '/api/telemetry/status') {
+    return sendJson(res, 200, telemetryClient.getTelemetryStatus());
+  }
+
+  if (req.method === 'POST' && pathname === '/api/telemetry/ping') {
+    const status = await telemetryClient.sendPing({ appBuild: APP_BUILD });
+    return sendJson(res, 200, status);
+  }
+
   if (req.method === 'GET' && pathname === '/api/bootstrap') {
     const config = syncEngine.loadConfig();
     const seasons = syncEngine.listSavedSeasons();
@@ -475,7 +485,8 @@ async function handleApi(req, res, urlObj) {
         : null,
       champions: championsList,
       laneChampionIds,
-      ddVersion: ddAssets?.version || null
+      ddVersion: ddAssets?.version || null,
+      telemetry: telemetryClient.getTelemetryStatus()
     });
   }
 
@@ -2138,6 +2149,7 @@ if (require.main === module) {
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`LoL Ranked Advisor escuchando en http://127.0.0.1:${PORT}`);
     startAutoOverlayWatcher();
+    telemetryClient.startTelemetry({ appBuild: APP_BUILD });
     autoTournamentTimer = setInterval(async () => {
       if (torneoSyncBusy) return;
       const dc = syncEngine.loadConfig().discord || {};
@@ -2154,12 +2166,14 @@ if (require.main === module) {
   });
   process.on('SIGINT', () => {
     stopAutoOverlayWatcher();
+    telemetryClient.stopTelemetry();
     if (autoTournamentTimer) clearInterval(autoTournamentTimer);
     stopOverlayProcess();
     process.exit(0);
   });
   process.on('SIGTERM', () => {
     stopAutoOverlayWatcher();
+    telemetryClient.stopTelemetry();
     if (autoTournamentTimer) clearInterval(autoTournamentTimer);
     stopOverlayProcess();
     process.exit(0);

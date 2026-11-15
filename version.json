@@ -1,8 +1,8 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "patch": "16.22",
-  "title": "LoL Advisor v2.2.2",
-  "changelog": "Resumen táctico de equipo enfocado en el historial y puntos fuertes reales de tus aliados por línea con consejos tácticos de coordinación, y reubicación del resumen al fondo de Mi Campeón debajo de runas y objetos.",
+  "title": "LoL Advisor v2.2.3",
+  "changelog": "Telemetría anónima en tiempo real conectada a Cloudflare (contador de jugadores online en barra superior y panel de Seasons & Datos).",
   "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
   "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
 }

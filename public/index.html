@@ -117,6 +117,11 @@
               <span id="activePatchPill" class="season-pill">Sin datos</span>
               <button id="quickSyncBtn" class="ghost icon-mini-btn" title="Actualizar base de datos de Season desde OP.GG">↻</button>
             </div>
+
+            <div class="telemetry-online-pill" id="telemetryOnlinePill" title="Usuarios de LoL Advisor conectados en tiempo real vía Cloudflare">
+              <span class="telemetry-live-dot"></span>
+              <span id="telemetryOnlineText">1 online</span>
+            </div>
           </div>
 
           <div class="donate-under-patch">
@@ -368,10 +373,29 @@
 
             <div class="sub-section">
               <h3 class="sub-heading">Actualizaciones desde la Nube (GitHub)</h3>
-              <p class="muted" style="margin-bottom:8px;">Versión instalada: <strong id="cfgAppBuildLabel" class="mono">v2.1.0</strong> · Repositorio: <a href="https://github.com/ngelx360/lol-advisor" target="_blank" rel="noopener noreferrer" class="muted" style="text-decoration:underline;">ngelx360/lol-advisor</a></p>
+              <p class="muted" style="margin-bottom:8px;">Versión instalada: <strong id="cfgAppBuildLabel" class="mono">v2.2.2</strong> · Repositorio: <a href="https://github.com/ngelx360/lol-advisor" target="_blank" rel="noopener noreferrer" class="muted" style="text-decoration:underline;">ngelx360/lol-advisor</a></p>
               <div class="input-row" style="align-items:center;gap:12px;">
                 <button type="button" id="manualCheckUpdateBtn" class="ghost">Buscar Actualizaciones</button>
                 <span id="manualUpdateCheckStatus" class="muted" style="font-size:12.5px;"></span>
+              </div>
+            </div>
+
+            <div class="sub-section">
+              <h3 class="sub-heading">Usuarios Activos en la Comunidad (Cloudflare)</h3>
+              <p class="muted" style="margin-bottom:8px;">Monitoreo en vivo de jugadores conectados a LoL Advisor:</p>
+              <div class="telemetry-stats-row">
+                <div class="stat-box">
+                  <div class="stat-box-label">Conectados Ahora</div>
+                  <div class="stat-box-val" id="dbOnlineCount" style="color:#55ffb8;">1 online</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-box-label">Activos Hoy (Estimado)</div>
+                  <div class="stat-box-val" id="dbTodayCount">1 jugador</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-box-label">Servidor Telemetría</div>
+                  <div class="stat-box-val" style="font-size:12px;color:#8df8fb;">Cloudflare Worker</div>
+                </div>
               </div>
             </div>
           </div>

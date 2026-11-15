@@ -43,5 +43,6 @@
     "adminOnly": true,
     "adminIds": ""
   },
-  "clientOwnerKey": "6848f312ad38"
+  "clientOwnerKey": "6848f312ad38",
+  "anonymousClientId": "56899509-63d6-463c-826c-2a5f29a7490b"
 }

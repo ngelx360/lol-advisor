@@ -3759,3 +3759,49 @@ select {
   color: var(--muted);
   font-size: 12.5px;
 }
+
+/* ==================== TELEMETRY & ONLINE COUNTER ==================== */
+.telemetry-online-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: rgba(46, 230, 166, 0.09);
+  border: 1px solid rgba(46, 230, 166, 0.32);
+  color: #55ffb8;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  user-select: none;
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.telemetry-online-pill:hover {
+  background: rgba(46, 230, 166, 0.18);
+  border-color: rgba(46, 230, 166, 0.6);
+  box-shadow: 0 0 10px rgba(46, 230, 166, 0.2);
+}
+
+.telemetry-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2ee6a6;
+  box-shadow: 0 0 6px #2ee6a6;
+  animation: telemetryPulse 2s infinite ease-in-out;
+}
+
+@keyframes telemetryPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.telemetry-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}

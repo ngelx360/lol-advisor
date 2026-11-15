@@ -133,6 +133,37 @@ async function apiJson(url, options = {}) {
 }
 
 // ==================== INITIALIZATION ====================
+function renderTelemetryUi(telemetry) {
+  const t = telemetry || state.telemetry || { onlineNow: 1, todayDau: 1 };
+  const onlineCount = Math.max(1, Number(t.onlineNow) || 1);
+  const todayCount = Math.max(onlineCount, Number(t.todayDau) || 1);
+
+  const textEl = document.getElementById('telemetryOnlineText');
+  if (textEl) {
+    textEl.textContent = `${onlineCount} online`;
+  }
+  const dbOnlineEl = document.getElementById('dbOnlineCount');
+  if (dbOnlineEl) {
+    dbOnlineEl.textContent = `${onlineCount} online`;
+  }
+  const dbTodayEl = document.getElementById('dbTodayCount');
+  if (dbTodayEl) {
+    dbTodayEl.textContent = `${todayCount} ${todayCount === 1 ? 'jugador' : 'jugadores'}`;
+  }
+}
+
+async function refreshTelemetry() {
+  try {
+    const data = await apiJson('/api/telemetry/status');
+    if (data) {
+      state.telemetry = data;
+      renderTelemetryUi(data);
+    }
+  } catch {
+    // Non-fatal background fetch
+  }
+}
+
 async function bootstrap() {
   const data = await apiJson('/api/bootstrap');
   state.config = data.config;
@@ -141,6 +172,7 @@ async function bootstrap() {
   state.champions = data.champions || [];
   state.championsById = new Map(state.champions.map((c) => [Number(c.id), c]));
   state.laneChampionIds = data.laneChampionIds || {};
+  state.telemetry = data.telemetry || { onlineNow: 1, todayDau: 1 };
 
   if (state.config?.defaultRoles?.[0] && !state.lcu.inChampSelect) {
     state.draft.myRole = state.config.defaultRoles[0];
@@ -149,6 +181,7 @@ async function bootstrap() {
   renderTopBar();
   renderDraftControls();
   renderDatabaseView();
+  renderTelemetryUi(state.telemetry);
   syncSettingsInputs();
   syncSoloDuoInputs();
   syncDiscordInputs();
@@ -1353,6 +1386,7 @@ function renderDatabaseView() {
       .join('');
   }
 
+  renderTelemetryUi();
   renderPoolGrid();
 }
 
@@ -1530,6 +1564,7 @@ async function togglePoolChampion(championId) {
     body: JSON.stringify({ myPool: Array.from(current) })
   });
   state.config = res.config;
+  renderTelemetryUi();
   renderPoolGrid();
   renderDraftControls();
   refreshRecommendations();
@@ -3011,3 +3046,4 @@ setInterval(() => {
     refreshRoadToState(false);
   }
 }, 5000);
+setInterval(refreshTelemetry, 45000);
