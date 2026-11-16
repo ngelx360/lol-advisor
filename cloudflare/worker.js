@@ -146,8 +146,8 @@ export default {
       });
     }
 
-    // Telemetry: Statistics Query
-    if (request.method === 'GET' && (url.pathname === '/api/telemetry/stats' || url.pathname === '/telemetry/stats')) {
+    // Telemetry: Statistics Query (also responds to GET on /ping for easy browser inspection)
+    if (request.method === 'GET' && (url.pathname === '/api/telemetry/stats' || url.pathname === '/telemetry/stats' || url.pathname === '/api/telemetry/ping' || url.pathname === '/ping')) {
       const now = Date.now();
       cleanMemoryActive(now);
       let onlineNow = Math.max(1, memoryActive.size);
