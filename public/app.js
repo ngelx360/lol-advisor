@@ -427,6 +427,8 @@ async function pollLcu() {
             state.draft.isAram = true;
             state.draft.enemyLanerId = null;
             state.draft.enemies = [];
+          } else {
+            state.draft.isAram = false;
           }
 
           let liveChanged = false;
@@ -914,6 +916,16 @@ function renderRecommendationsList() {
   }
 }
 
+function getActiveIsAram() {
+  if (state.isInGame && state.liveGame) {
+    return Boolean(state.liveGame.isAram);
+  }
+  if (state.lcu?.inChampSelect) {
+    return Boolean(state.lcu.isAram);
+  }
+  return Boolean(state.draft?.isAram);
+}
+
 async function selectPreviewChampion(championId) {
   state.selectedPreviewId = championId;
   document.querySelectorAll('.opgg-row, .cand-row').forEach((r) => {
@@ -927,7 +939,7 @@ async function selectPreviewChampion(championId) {
   panel.innerHTML = '<div class="loading-state">Cargando build y runas...</div>';
 
   try {
-    const isAram = Boolean(state.draft.isAram || state.lcu?.isAram || state.liveGame?.isAram);
+    const isAram = getActiveIsAram();
     const qs = new URLSearchParams({
       championId: String(championId),
       role: isAram ? 'ARAM' : state.draft.myRole
@@ -935,6 +947,7 @@ async function selectPreviewChampion(championId) {
     if (isAram) {
       qs.set('isAram', 'true');
     } else {
+      qs.set('isAram', 'false');
       if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
       if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
       if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));
@@ -963,7 +976,7 @@ async function loadMyChampionTab(championId) {
   container.innerHTML = '<div class="panel loading-state">Cargando mejor build, runas y datos de línea...</div>';
 
   try {
-    const isAram = Boolean(state.draft.isAram || state.lcu?.isAram || state.liveGame?.isAram);
+    const isAram = getActiveIsAram();
     const qs = new URLSearchParams({
       championId: String(championId),
       role: isAram ? 'ARAM' : state.draft.myRole
@@ -971,6 +984,7 @@ async function loadMyChampionTab(championId) {
     if (isAram) {
       qs.set('isAram', 'true');
     } else {
+      qs.set('isAram', 'false');
       if (state.draft.enemyLanerId) qs.set('opponentId', String(state.draft.enemyLanerId));
       if (state.draft.allies?.length) qs.set('allies', JSON.stringify(state.draft.allies));
       if (state.draft.enemies?.length) qs.set('enemies', JSON.stringify(state.draft.enemies));

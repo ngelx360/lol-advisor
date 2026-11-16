@@ -1,8 +1,8 @@
 {
-  "version": "2.2.5",
+  "version": "2.2.7",
   "patch": "16.22",
-  "title": "LoL Advisor v2.2.5",
-  "changelog": "Conexión comunitaria automática a Discord (Torneos, Road To y Avisos en vivo) y sincronización con Discord.",
+  "title": "LoL Advisor v2.2.7",
+  "changelog": "Corrección de detección de modo de juego: Ranked Flex y Solo/Duo ya no se detectan falsamente como ARAM.",
   "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
   "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
 }

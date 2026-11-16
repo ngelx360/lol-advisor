@@ -41,7 +41,73 @@ Root(Data(Positions([Top("Ahri",100,52,0.52)],[Top("Kha'Zix",200,98,0.49)])))`;
   assert.strictEqual(lcu.normalizeLcuPosition('JUNGLE'), 'jungle');
   assert.strictEqual(lcu.normalizeLcuPosition(''), null);
 
-  console.log('[PASS] Unit tests (TOON parser, champion slug, LCU position normalization)');
+  // 4. LCU Game Mode Detection (Ranked Flex vs ARAM)
+  const flexSession = {
+    benchEnabled: false,
+    benchChampions: [],
+    myTeam: [
+      { cellId: 0, assignedPosition: 'MIDDLE' },
+      { cellId: 1, assignedPosition: 'TOP' },
+      { cellId: 2, assignedPosition: 'JUNGLE' },
+      { cellId: 3, assignedPosition: 'BOTTOM' },
+      { cellId: 4, assignedPosition: 'UTILITY' }
+    ]
+  };
+  const flexGf = { gameData: { queue: { id: 440 }, gameMode: 'CLASSIC', map: { id: 11 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: flexGf, session: flexSession }),
+    false,
+    'Ranked Flex MUST NOT be detected as ARAM'
+  );
+
+  const soloGf = { gameData: { queue: { id: 420 }, gameMode: 'CLASSIC', map: { id: 11 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: soloGf, session: flexSession }),
+    false,
+    'Ranked Solo/Duo MUST NOT be detected as ARAM'
+  );
+
+  const draftGf = { gameData: { queue: { id: 400 }, gameMode: 'CLASSIC', map: { id: 11 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: draftGf, session: flexSession }),
+    false,
+    'Normal Draft MUST NOT be detected as ARAM'
+  );
+
+  const blindSession = { benchEnabled: false, benchChampions: [], myTeam: [{ cellId: 0, assignedPosition: '' }] };
+  const blindGf = { gameData: { queue: { id: 430 }, gameMode: 'CLASSIC', map: { id: 11 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: blindGf, session: blindSession }),
+    false,
+    'Normal Blind Pick MUST NOT be detected as ARAM'
+  );
+
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: null, session: flexSession }),
+    false,
+    'Session with assigned positions MUST NOT be detected as ARAM even if gameflow is null'
+  );
+
+  const aramSession = {
+    benchEnabled: true,
+    benchChampions: [{ championId: 103, isMine: false }],
+    myTeam: [{ cellId: 0, assignedPosition: '' }]
+  };
+  const aramGf = { gameData: { queue: { id: 450 }, gameMode: 'ARAM', map: { id: 12 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: aramGf, session: aramSession }),
+    true,
+    'ARAM matchmade MUST be detected as ARAM'
+  );
+
+  const aramCustomGf = { gameData: { queue: { id: 0 }, gameMode: 'ARAM', map: { id: 12 } } };
+  assert.strictEqual(
+    lcu.detectAramFromLcu({ gameflow: aramCustomGf, session: aramSession }),
+    true,
+    'Custom ARAM game MUST be detected as ARAM'
+  );
+
+  console.log('[PASS] Unit tests (TOON parser, champion slug, LCU position normalization, Ranked Flex vs ARAM mode detection)');
 }
 
 async function ensureSeasonSynced() {
