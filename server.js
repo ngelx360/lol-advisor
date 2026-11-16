@@ -423,6 +423,10 @@ async function handleApi(req, res, urlObj) {
   }
 
   if (req.method === 'GET' && pathname === '/api/telemetry/status') {
+    if (urlObj.searchParams.get('refresh') === '1' || urlObj.searchParams.get('refresh') === 'true') {
+      const status = await telemetryClient.sendPing({ appBuild: APP_BUILD });
+      return sendJson(res, 200, status);
+    }
     return sendJson(res, 200, telemetryClient.getTelemetryStatus());
   }
 

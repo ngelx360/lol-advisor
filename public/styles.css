@@ -3775,7 +3775,7 @@ select {
   font-weight: 700;
   letter-spacing: 0.02em;
   user-select: none;
-  cursor: default;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
@@ -3783,6 +3783,44 @@ select {
   background: rgba(46, 230, 166, 0.18);
   border-color: rgba(46, 230, 166, 0.6);
   box-shadow: 0 0 10px rgba(46, 230, 166, 0.2);
+}
+
+.telemetry-refresh-btn {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #55ffb8;
+  font-size: 12px;
+  line-height: 1;
+  padding: 1px 3px;
+  margin-left: 1px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  opacity: 0.8;
+  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.telemetry-refresh-btn:hover {
+  opacity: 1;
+  color: #ffffff;
+  background: rgba(46, 230, 166, 0.25);
+  transform: scale(1.18);
+}
+
+.telemetry-refresh-btn:active {
+  transform: scale(0.9);
+}
+
+.telemetry-refresh-btn.spinning {
+  animation: telemetrySpin 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes telemetrySpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .telemetry-live-dot {

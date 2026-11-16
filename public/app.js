@@ -152,15 +152,30 @@ function renderTelemetryUi(telemetry) {
   }
 }
 
-async function refreshTelemetry() {
+let isRefreshingTelemetry = false;
+async function refreshTelemetry(forcePing = false) {
+  if (isRefreshingTelemetry && forcePing) return;
+  const refreshBtn = document.getElementById('telemetryRefreshBtn');
+  if (forcePing) {
+    isRefreshingTelemetry = true;
+    if (refreshBtn) refreshBtn.classList.add('spinning');
+  }
   try {
-    const data = await apiJson('/api/telemetry/status');
+    const url = forcePing ? '/api/telemetry/status?refresh=1' : '/api/telemetry/status';
+    const data = await apiJson(url);
     if (data) {
       state.telemetry = data;
       renderTelemetryUi(data);
     }
   } catch {
     // Non-fatal background fetch
+  } finally {
+    if (forcePing) {
+      setTimeout(() => {
+        if (refreshBtn) refreshBtn.classList.remove('spinning');
+        isRefreshingTelemetry = false;
+      }, 700);
+    }
   }
 }
 
@@ -1982,6 +1997,21 @@ function bindEvents() {
   document.getElementById('quickSyncBtn').addEventListener('click', startSeasonSync);
   document.getElementById('fullSyncBtn').addEventListener('click', startSeasonSync);
   document.getElementById('emptyDbSyncBtn').addEventListener('click', startSeasonSync);
+
+  // Online telemetry refresh
+  const telemetryRefreshBtn = document.getElementById('telemetryRefreshBtn');
+  if (telemetryRefreshBtn) {
+    telemetryRefreshBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      refreshTelemetry(true);
+    });
+  }
+  const telemetryOnlinePill = document.getElementById('telemetryOnlinePill');
+  if (telemetryOnlinePill) {
+    telemetryOnlinePill.addEventListener('click', () => {
+      refreshTelemetry(true);
+    });
+  }
 
   // Saved seasons switch
   document.getElementById('savedSeasonsList').addEventListener('click', async (e) => {

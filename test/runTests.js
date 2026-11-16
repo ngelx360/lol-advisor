@@ -153,10 +153,12 @@ async function runHttpIntegrationTests() {
     assert(boot.champions.length >= 165, 'Bootstrap must return champions');
     assert(boot.telemetry && typeof boot.telemetry.onlineNow === 'number', 'Bootstrap must include telemetry');
 
-    // 1b. Telemetry status endpoint
+    // 1b. Telemetry status endpoint & manual refresh
     const teleStatus = await fetch(`${baseUrl}/api/telemetry/status`).then((r) => r.json());
     assert(typeof teleStatus.onlineNow === 'number', 'Telemetry must return onlineNow');
     assert(teleStatus.clientId && teleStatus.clientId.length > 0, 'Telemetry must return anonymous clientId');
+    const teleRefresh = await fetch(`${baseUrl}/api/telemetry/status?refresh=1`).then((r) => r.json());
+    assert(typeof teleRefresh.onlineNow === 'number', 'Telemetry refresh must return onlineNow');
 
     // 2. Blind Pick / First Pick Mid (no enemyLanerId, patch_wr mode)
     const blindRecs = await fetch(`${baseUrl}/api/recommendations`, {
@@ -636,12 +638,15 @@ async function runHttpIntegrationTests() {
     assert(appJs.includes('renderEnemyCountersStrip') && appJs.includes('selectEnemyLaner'), 'app.js must render enemyCountersStrip when enemyLanerId is selected');
     assert(appJs.includes('dropTorneoTeam') && appJs.includes('renderRosterChipsHtml') && appJs.includes('team-name-glow'), 'app.js must include team drop, glow names, and green/red lobby chips');
     assert(appJs.includes("switchView('draft')"), 'app.js must auto-switch to draft on champ select');
+    assert(appJs.includes('telemetryRefreshBtn') && appJs.includes('refreshTelemetry(true)'), 'app.js must support telemetry refresh button');
+    assert(html.includes('id="telemetryRefreshBtn"'), 'HTML must include telemetryRefreshBtn in online pill');
     const css = await fetch(`${baseUrl}/styles.css`).then((r) => r.text());
     assert(css.includes('--hex: #3fd0d4') && css.includes('--brass: #b8975a'), 'CSS must use LOL VERSUS Hextech tokens');
     assert(css.includes('.lcu-profile-badge[data-tier="EMERALD"]'), 'CSS must color LCU badge by ranked division tier');
     assert(css.includes('.enemy-counters-strip') && css.includes('.counter-card'), 'CSS must style enemy counters strip and cards');
     assert(css.includes('.team-name-glow') && css.includes('.torneo-status-hero') && css.includes('.glow-white-heading'), 'CSS must style glowing team names, registration & status');
     assert(css.includes('.aram-mode-banner') && css.includes('.aram-banner-title'), 'CSS must style ARAM mode banner');
+    assert(css.includes('.telemetry-refresh-btn'), 'CSS must style telemetry-refresh-btn');
     assert(fs.existsSync(path.join(__dirname, '..', 'LoL Advisor.exe')), 'LoL Advisor.exe must exist');
     assert(fs.existsSync(path.join(__dirname, '..', 'LoL Overlay.exe')), 'LoL Overlay.exe must exist');
     assert(fs.existsSync(path.join(__dirname, '..', 'Instalador LoL Advisor.exe')), 'Instalador LoL Advisor.exe must exist');
