@@ -117,12 +117,6 @@
               <span id="activePatchPill" class="season-pill">Sin datos</span>
               <button id="quickSyncBtn" class="ghost icon-mini-btn" title="Actualizar base de datos de Season desde OP.GG">↻</button>
             </div>
-
-            <div class="telemetry-online-pill" id="telemetryOnlinePill" title="Usuarios de LoL Advisor conectados en tiempo real vía Cloudflare (clic para refrescar)">
-              <span class="telemetry-live-dot"></span>
-              <span id="telemetryOnlineText">1 online</span>
-              <button id="telemetryRefreshBtn" class="telemetry-refresh-btn" title="Refrescar usuarios online ahora" aria-label="Refrescar usuarios online">↻</button>
-            </div>
           </div>
 
           <div class="donate-under-patch">
@@ -382,8 +376,17 @@
             </div>
 
             <div class="sub-section">
-              <h3 class="sub-heading">Usuarios Activos en la Comunidad (Cloudflare)</h3>
-              <p class="muted" style="margin-bottom:8px;">Monitoreo en vivo de jugadores conectados a LoL Advisor:</p>
+              <div class="card-header-row" style="margin-bottom:10px;align-items:center;">
+                <div>
+                  <h3 class="sub-heading" style="margin-bottom:2px;">Usuarios Activos en la Comunidad (Cloudflare)</h3>
+                  <p class="muted" style="margin-bottom:0;">Monitoreo en vivo de jugadores conectados a LoL Advisor.</p>
+                </div>
+                <div class="telemetry-online-pill" id="telemetryOnlinePill" title="Usuarios de LoL Advisor conectados en tiempo real vía Cloudflare (clic para refrescar)">
+                  <span class="telemetry-live-dot"></span>
+                  <span id="telemetryOnlineText">1 online</span>
+                  <button id="telemetryRefreshBtn" class="telemetry-refresh-btn" title="Refrescar usuarios online ahora" aria-label="Refrescar usuarios online">↻</button>
+                </div>
+              </div>
               <div class="telemetry-stats-row">
                 <div class="stat-box">
                   <div class="stat-box-label">Conectados Ahora</div>
