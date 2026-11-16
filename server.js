@@ -994,7 +994,9 @@ async function handleApi(req, res, urlObj) {
   }
 
   if (req.method === 'GET' && pathname === '/api/telemetry/status') {
-    if (urlObj.searchParams.get('refresh') === '1' || urlObj.searchParams.get('refresh') === 'true') {
+    const isRefresh = urlObj.searchParams.get('refresh') === '1' || urlObj.searchParams.get('refresh') === 'true';
+    const age = Date.now() - (telemetryClient.getTelemetryStatus().lastPingAt || 0);
+    if (isRefresh || age > 35000) {
       const status = await telemetryClient.sendPing({ appBuild: APP_BUILD });
       return sendJson(res, 200, status);
     }
