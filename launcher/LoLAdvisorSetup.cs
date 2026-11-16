@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Reflection;
 using System.Security.AccessControl;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -15,7 +16,7 @@ namespace LoLAdvisorSetup
     internal static class Program
     {
         private const string AppName = "LoL Ranked Advisor";
-        private const string AppVersion = "2.2.1";
+        private const string AppVersion = "2.2.7";
         private const string NodeZipUrl = "https://nodejs.org/dist/v22.15.0/node-v22.15.0-win-x64.zip";
         private const string ResourceName = "LoLAdvisorPayload.zip";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\LoLRankedAdvisor";
@@ -161,6 +162,45 @@ namespace LoLAdvisorSetup
                 }
                 catch { }
             }
+
+            // Also ensure any lingering node server holding port 3848 is stopped
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "netstat.exe",
+                    Arguments = "-ano -p tcp",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                using (var p = Process.Start(psi))
+                {
+                    if (p != null)
+                    {
+                        string output = p.StandardOutput.ReadToEnd();
+                        p.WaitForExit(1500);
+                        foreach (string line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            if (!line.Contains("3848") || !line.Contains("LISTENING")) continue;
+                            var m = Regex.Match(line.Trim(), @"(\d+)$");
+                            if (!m.Success) continue;
+                            int pid;
+                            if (int.TryParse(m.Groups[1].Value, out pid))
+                            {
+                                try
+                                {
+                                    var target = Process.GetProcessById(pid);
+                                    target.Kill();
+                                    target.WaitForExit(1000);
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         internal static void CreateShortcut(string shortcutPath, string targetExe, string workingDir, string iconPath, string description)

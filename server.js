@@ -20,7 +20,19 @@ const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 const telemetryClient = require('./lib/telemetryClient');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.5';
+
+function readAppBuild() {
+  try {
+    const vPath = path.join(__dirname, 'version.json');
+    if (fs.existsSync(vPath)) {
+      const vData = JSON.parse(fs.readFileSync(vPath, 'utf8'));
+      if (vData && vData.version) return String(vData.version).trim();
+    }
+  } catch {}
+  return '2.2.7';
+}
+let APP_BUILD = readAppBuild();
+
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -931,17 +943,19 @@ async function handleApi(req, res, urlObj) {
   const pathname = urlObj.pathname;
 
   if (req.method === 'GET' && (pathname === '/api/health' || pathname === '/health')) {
-    return sendJson(res, 200, { ok: true, appBuild: APP_BUILD });
+    const cur = readAppBuild();
+    return sendJson(res, 200, { ok: true, appBuild: cur });
   }
 
   if (req.method === 'GET' && pathname === '/api/update/check') {
+    const cur = readAppBuild();
     try {
       const remote = await fetchJsonUrl(REMOTE_VERSION_URL);
       const remoteVer = String(remote?.version || '').trim();
-      const available = isNewerVersion(remoteVer, APP_BUILD);
+      const available = isNewerVersion(remoteVer, cur);
       return sendJson(res, 200, {
-        currentVersion: APP_BUILD,
-        remoteVersion: remoteVer || APP_BUILD,
+        currentVersion: cur,
+        remoteVersion: remoteVer || cur,
         updateAvailable: available,
         title: remote?.title || `LoL Advisor v${remoteVer}`,
         changelog: remote?.changelog || '',
@@ -951,8 +965,8 @@ async function handleApi(req, res, urlObj) {
       });
     } catch (err) {
       return sendJson(res, 200, {
-        currentVersion: APP_BUILD,
-        remoteVersion: APP_BUILD,
+        currentVersion: cur,
+        remoteVersion: cur,
         updateAvailable: false,
         error: err.message
       });
@@ -986,7 +1000,24 @@ async function handleApi(req, res, urlObj) {
           }
         });
       } catch {}
-      return sendJson(res, 200, { ok: true, message: 'Actualización aplicada con éxito' });
+
+      APP_BUILD = readAppBuild();
+      sendJson(res, 200, { ok: true, message: 'Actualización aplicada con éxito', version: APP_BUILD });
+
+      // Cleanly restart node process with newly unpacked code
+      setTimeout(() => {
+        try {
+          const child = spawn(process.execPath, process.argv.slice(1), {
+            cwd: __dirname,
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+          });
+          child.unref();
+        } catch {}
+        process.exit(0);
+      }, 500);
+      return;
     } catch (err) {
       try { if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip); } catch {}
       return sendJson(res, 500, { error: `Error al aplicar actualización: ${err.message}` });

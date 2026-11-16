@@ -206,12 +206,12 @@ async function runHttpIntegrationTests() {
     // 0. Health check
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
     assert.strictEqual(health.ok, true);
-    assert.strictEqual(health.appBuild, '2.2.5');
+    assert.strictEqual(health.appBuild, '2.2.7');
 
     // 0b. Cloud Auto-Update check
     const updateCheck = await fetch(`${baseUrl}/api/update/check`).then((r) => r.json());
     assert.strictEqual(typeof updateCheck.updateAvailable, 'boolean');
-    assert.strictEqual(updateCheck.currentVersion, '2.2.5');
+    assert.strictEqual(updateCheck.currentVersion, '2.2.7');
 
     // 1. Bootstrap
     const boot = await fetch(`${baseUrl}/api/bootstrap`).then((r) => r.json());

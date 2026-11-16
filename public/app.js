@@ -1815,9 +1815,22 @@ async function applyCloudUpdate() {
       body: JSON.stringify({ zipUrl: cloudUpdateInfo?.zipUrl || '' })
     });
     btn.textContent = '✓ ¡Actualizado! Reiniciando...';
-    setTimeout(() => {
-      window.location.reload();
-    }, 1500);
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const h = await fetch('/api/health').then((r) => r.json());
+        if (h && h.ok) {
+          clearInterval(interval);
+          window.location.reload();
+        }
+      } catch {
+        if (attempts > 15) {
+          clearInterval(interval);
+          window.location.reload();
+        }
+      }
+    }, 700);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = origText;

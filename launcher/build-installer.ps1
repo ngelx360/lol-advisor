@@ -30,7 +30,7 @@ try {
   New-Item -ItemType Directory -Path (Join-Path $StageDir "data\ddragon") -Force | Out-Null
 
   # 1. Core launchers, runtime, and scripts
-  foreach ($f in @("LoL Advisor.exe", "LoL Overlay.exe", "Iniciar LoL Advisor.bat", "Abrir (Sin Consola).vbs", "icon.ico", "server.js", "package.json")) {
+  foreach ($f in @("LoL Advisor.exe", "LoL Overlay.exe", "Iniciar LoL Advisor.bat", "Abrir (Sin Consola).vbs", "icon.ico", "server.js", "package.json", "version.json")) {
     $src = Join-Path $RootDir $f
     if (!(Test-Path $src)) { throw "Falta archivo requerido: $src" }
     Copy-Item $src (Join-Path $StageDir $f) -Force
