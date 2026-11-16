@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$OutputPath = "",
   [switch]$IncludeDiscord,
   [string]$BridgeUrl = "",
@@ -49,14 +49,14 @@ try {
   if (Test-Path $AssetsJson) { Copy-Item $AssetsJson (Join-Path $StageDir "data\ddragon\assets.json") -Force }
 
   $DiscordCfg = @{
-    enabled = $false
-    bridgeUrl = ""
+    enabled = $true
+    bridgeUrl = "https://lol-advisor.ngelx360.workers.dev"
     botToken = ""
     channelId = "1569830216757411911"
     roadToChannelId = "1569855142528950282"
     webhookUrl = ""
     adminOnly = $true
-    adminIds = ""
+    adminIds = "382962894075199488"
   }
 
   $LocalCfgPath = Join-Path $RootDir "data\config.json"

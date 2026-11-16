@@ -1,8 +1,8 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "patch": "16.22",
-  "title": "LoL Advisor v2.2.4",
-  "changelog": "Detección inteligente de ARAM (Abismo de los Lamentos): modo sin counters de línea con enfoque exclusivo en tu campeón, runas óptimas y build recomendada.",
+  "title": "LoL Advisor v2.2.5",
+  "changelog": "Conexión comunitaria automática a Discord (Torneos, Road To y Avisos en vivo) y sincronización con Discord.",
   "zipUrl": "https://raw.githubusercontent.com/ngelx360/lol-advisor/main/update.zip",
   "installerUrl": "https://github.com/ngelx360/lol-advisor/releases/latest"
 }

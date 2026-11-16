@@ -3059,8 +3059,12 @@ function renderRoadToView(snap) {
   }
   if (countEl) countEl.textContent = String(totalCount);
 
-  if (dcMsgEl && snap.source === 'discord' && snap.roadToChannelId) {
-    dcMsgEl.innerHTML = `<span class="metric-good">Conectado al canal #road-to (${esc(snap.roadToChannelId)})</span>`;
+  if (dcMsgEl) {
+    if (snap.source === 'discord' && snap.roadToChannelId) {
+      dcMsgEl.innerHTML = `<span class="metric-good">Conectado al canal #road-to (${esc(snap.roadToChannelId)})</span>`;
+    } else {
+      dcMsgEl.innerHTML = `<span class="metric-bad">Modo Local (Discord desconectado)</span>`;
+    }
   }
 
   if (!snap.active) {
@@ -3142,3 +3146,4 @@ setInterval(() => {
   }
 }, 5000);
 setInterval(refreshTelemetry, 45000);
+setInterval(() => checkCloudUpdates(false), 180000);

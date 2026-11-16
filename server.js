@@ -20,7 +20,7 @@ const tacticalAnalyzer = require('./lib/tacticalAnalyzer');
 const telemetryClient = require('./lib/telemetryClient');
 
 const PORT = Number(process.env.PORT || 3848);
-const APP_BUILD = '2.2.4';
+const APP_BUILD = '2.2.5';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const OVERLAY_EXE = path.join(__dirname, 'LoL Overlay.exe');
 const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/ngelx360/lol-advisor/main/version.json';
@@ -415,6 +415,21 @@ async function handleApi(req, res, urlObj) {
       await downloadBinaryFile(zipUrl, tempZip);
       await extractUpdateZip(tempZip, __dirname);
       try { fs.unlinkSync(tempZip); } catch {}
+      try {
+        const sync = require('./lib/syncEngine');
+        const cfg = sync.loadConfig();
+        sync.saveConfig({
+          discord: {
+            ...(cfg.discord || {}),
+            enabled: true,
+            bridgeUrl: 'https://lol-advisor.ngelx360.workers.dev',
+            channelId: cfg.discord?.channelId || '1569830216757411911',
+            roadToChannelId: cfg.discord?.roadToChannelId || '1569855142528950282',
+            adminOnly: true,
+            adminIds: '382962894075199488'
+          }
+        });
+      } catch {}
       return sendJson(res, 200, { ok: true, message: 'Actualización aplicada con éxito' });
     } catch (err) {
       try { if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip); } catch {}
