@@ -371,6 +371,562 @@ function hydrateBuild(build, ddAssets) {
   };
 }
 
+
+// ==================== TORNEO BLITZ & ROAD TO HELPERS (MODULE SCOPE) ====================
+// ==================== TORNEO BLITZ (DISCORD + DOUBLE ELIMINATION) ====================
+let lastPublishedLobbySig = '';
+let lastPublishedLobbyAt = 0;
+const reportedAutoGameIds = new Set();
+const autoPostingGameIds = new Set();
+const opggVerifiedSummoners = new Map();
+const OPGG_VERIFY_TTL_MS = 30 * 60 * 1000;
+
+async function verifyPlayersExistOnOpgg(players, region) {
+  const cleanRegion = opgg.normalizeOpggRegion(region || 'LAN');
+  const canonicalPlayers = [];
+  const invalidPlayers = [];
+
+  const checks = await Promise.all(
+    players.map(async (rawPlayer) => {
+      const clean = String(rawPlayer || '').trim().replace(/\s*#\s*/g, '#');
+      const hashIdx = clean.lastIndexOf('#');
+      if (hashIdx <= 0 || hashIdx >= clean.length - 1) {
+        return { ok: false, raw: rawPlayer, reason: 'formato (usa Nombre#TAG)' };
+      }
+      const gameName = clean.slice(0, hashIdx).trim();
+      const tagLine = clean.slice(hashIdx + 1).trim();
+      const cacheKey = `${cleanRegion}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+      const cached = opggVerifiedSummoners.get(cacheKey);
+      if (cached && Date.now() - cached.at < OPGG_VERIFY_TTL_MS) {
+        return { ok: true, canonical: cached.canonical };
+      }
+      try {
+        const prof = await opgg.getSummonerProfile(gameName, tagLine, cleanRegion);
+        if (!prof || !prof.game_name) {
+          return { ok: false, raw: clean, reason: `no encontrado en OP.GG (${cleanRegion})` };
+        }
+        const canonical = `${prof.game_name}#${prof.tagline || tagLine}`;
+        opggVerifiedSummoners.set(cacheKey, { at: Date.now(), canonical });
+        return { ok: true, canonical };
+      } catch {
+        return { ok: false, raw: clean, reason: `no existe en OP.GG (${cleanRegion})` };
+      }
+    })
+  );
+
+  for (const c of checks) {
+    if (c.ok) canonicalPlayers.push(c.canonical);
+    else invalidPlayers.push(`${c.raw} (${c.reason})`);
+  }
+
+  if (invalidPlayers.length) {
+    throw new Error(
+      `No se pudo registrar el equipo. Verifica en OP.GG (${cleanRegion}): ${invalidPlayers.join(' · ')}`
+    );
+  }
+  return canonicalPlayers;
+}
+
+function isDiscordChanReady(dc, chanId) {
+  return Boolean(dc?.enabled && discordClient.hasDiscordTransport(dc) && chanId);
+}
+
+function dcTransportOpts(dc) {
+  return { bridgeUrl: dc?.bridgeUrl || '', botToken: dc?.botToken || '' };
+}
+
+function postDiscordChat(dc, channelId, content) {
+  return discordClient.sendChannelMessage({
+    bridgeUrl: dc?.bridgeUrl || '',
+    botToken: dc?.botToken || '',
+    channelId,
+    webhookUrl: dc?.webhookUrl || '',
+    content
+  });
+}
+
+async function resolveAllowedDiscordAdmins(dc) {
+  const manual = String(dc.adminIds || '')
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s));
+  let ownerId = '';
+  if (discordClient.hasDiscordTransport(dc) && dc.channelId) {
+    try {
+      const ctx = await discordClient.fetchChannelAdminContext(dcTransportOpts(dc), dc.channelId);
+      ownerId = ctx.ownerId || '';
+    } catch {
+      ownerId = '';
+    }
+  }
+  const allowed = [...new Set([ownerId, ...manual].filter(Boolean))];
+  return { ownerId, allowed };
+}
+
+function buildTeamRostersMap(teams, inLobbyPlayers) {
+  const map = {};
+  for (const t of teams || []) {
+    map[t.name] = (t.players || []).map((p) => ({
+      name: p,
+      inLobby: tournamentEngine.isPlayerInList(p, inLobbyPlayers)
+    }));
+  }
+  return map;
+}
+
+async function enrichAndSyncTournamentSnapshot(snap, cfg, dc) {
+  if (!snap.active) {
+    lastPublishedLobbySig = '';
+    return {
+      ...snap,
+      inLobbyPlayers: [],
+      activeLobbyMatchId: null,
+      teamRosters: {},
+      lcuLobbyStatus: { connected: false, inCustomLobby: false, inCustomGame: false, detectedCount: 0 }
+    };
+  }
+
+  let lcuState = {
+    connected: false,
+    inCustomLobby: false,
+    inCustomGame: false,
+    isLobbyLeader: false,
+    lobbyPlayers: [],
+    recentCustomGames: []
+  };
+  try {
+    lcuState = await lcuWatcher.readLcuCustomLobbyAndHistory({
+      enabled: cfg.lcuEnabled !== false,
+      customLockfilePath: cfg.lcuLockfilePath || ''
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  const discordLobbyPlayers = Array.isArray(snap.lobbyPresence?.players) ? snap.lobbyPresence.players : [];
+  const localLobbyAnalysis = tournamentEngine.matchLobbyAndCustomGames({
+    bracket: snap.bracket,
+    teams: snap.teams,
+    openedAt: snap.openedAt,
+    lobbyPlayers: lcuState.lobbyPlayers || [],
+    customGames: lcuState.recentCustomGames || [],
+    reportedGameIds: [...(snap.reportedGameIds || []), ...reportedAutoGameIds]
+  });
+
+  // 1. Auto-sync live Custom Lobby players to Discord via !SALA (1 person in lobby is enough!)
+  const localMatched = localLobbyAnalysis.matchedTournamentLobbyPlayers || [];
+  const localSigList = localMatched.map((s) => s.toLowerCase()).sort().join(',');
+  const discordSigList = discordLobbyPlayers.map((s) => s.toLowerCase()).sort().join(',');
+
+  if (isDiscordChanReady(dc, dc.channelId)) {
+    const now = Date.now();
+    const discordSalaAge = snap.lobbyPresence?.updatedAt
+      ? now - new Date(snap.lobbyPresence.updatedAt).getTime()
+      : Number.MAX_SAFE_INTEGER;
+
+    if (
+      localMatched.length > 0 &&
+      localSigList !== discordSigList &&
+      localSigList !== lastPublishedLobbySig &&
+      now - lastPublishedLobbyAt > 4500 &&
+      (lcuState.isLobbyLeader || discordSalaAge > 7000)
+    ) {
+      lastPublishedLobbySig = localSigList;
+      lastPublishedLobbyAt = now;
+      try {
+        const matchTag = localLobbyAnalysis.activeLobbyMatchId || 'SALA';
+        await postDiscordChat(dc, dc.channelId, `!SALA ${matchTag} | ${localMatched.join(', ')}`);
+      } catch {
+        // Non-fatal; local lobby indicator still works
+      }
+    } else if (
+      lastPublishedLobbySig &&
+      !lcuState.inCustomLobby &&
+      !lcuState.inCustomGame &&
+      discordLobbyPlayers.length > 0 &&
+      now - lastPublishedLobbyAt > 4500
+    ) {
+      lastPublishedLobbySig = '';
+      lastPublishedLobbyAt = now;
+      try {
+        await postDiscordChat(dc, dc.channelId, '!SALA CLEAR');
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  // 2. Auto-detect finished Custom Game in LoL Match History & post !BOTGANADOR
+  const det = localLobbyAnalysis.detectedResult;
+  if (det && !reportedAutoGameIds.has(det.gameId) && !autoPostingGameIds.has(det.gameId)) {
+    autoPostingGameIds.add(det.gameId);
+    try {
+      if (isDiscordChanReady(dc, dc.channelId)) {
+        await postDiscordChat(dc, dc.channelId, `!BOTGANADOR ${det.matchId} ${det.winnerName} | game:${det.gameId}`);
+        if (Array.isArray(det.playerStats) && det.playerStats.length) {
+          await postDiscordChat(
+            dc,
+            dc.channelId,
+            tournamentEngine.encodeCompactMatchStats(
+              det.matchId,
+              det.gameId,
+              det.gameDuration || 0,
+              det.playerStats
+            )
+          );
+        }
+      } else {
+        const local = syncEngine.loadLocalTournament();
+        if (local.active) {
+          local.results = [...(local.results || []), { matchId: det.matchId, winnerName: det.winnerName, atMs: Date.now() }];
+          local.reportedGameIds = [...new Set([...(local.reportedGameIds || []), det.gameId])];
+          if (Array.isArray(det.playerStats) && det.playerStats.length) {
+            local.matchStats = [
+              ...(local.matchStats || []),
+              {
+                matchId: det.matchId,
+                gameId: det.gameId,
+                durationSec: det.gameDuration || 0,
+                players: det.playerStats,
+                at: new Date().toISOString()
+              }
+            ];
+          }
+          syncEngine.saveLocalTournament(local);
+        }
+      }
+      reportedAutoGameIds.add(det.gameId);
+      tournamentEngine.applyMatchResult(snap.bracket, det.matchId, det.winnerName);
+      if (Array.isArray(det.playerStats) && det.playerStats.length) {
+        snap.matchStats = [
+          ...(snap.matchStats || []),
+          {
+            matchId: det.matchId,
+            gameId: det.gameId,
+            durationSec: det.gameDuration || 0,
+            players: det.playerStats
+          }
+        ];
+      }
+    } catch {
+      // Non-fatal
+    } finally {
+      autoPostingGameIds.delete(det.gameId);
+    }
+  }
+
+  // Merge Discord !SALA + local LCU lobby players so UI always stays fresh green/red
+  const mergedLobbyMap = new Map();
+  for (const p of [...discordLobbyPlayers, ...localMatched]) {
+    const k = tournamentEngine.normalizePlayerTag(p);
+    if (k && !mergedLobbyMap.has(k)) mergedLobbyMap.set(k, p);
+  }
+  const mergedLobbyPlayers = [...mergedLobbyMap.values()];
+  const mergedAnalysis = tournamentEngine.matchLobbyAndCustomGames({
+    bracket: snap.bracket,
+    teams: snap.teams,
+    openedAt: snap.openedAt,
+    lobbyPlayers: mergedLobbyPlayers
+  });
+
+  const myOwnerKey = syncEngine.getClientOwnerKey();
+  const teamCanDropMap = new Map();
+  const sanitizedTeams = (snap.teams || []).map((t) => {
+    const { ownerKey, ...rest } = t;
+    const canDrop = Boolean(ownerKey && String(ownerKey).toLowerCase() === String(myOwnerKey).toLowerCase());
+    teamCanDropMap.set(String(t.name || '').toLowerCase(), canDrop);
+    return { ...rest, canDrop };
+  });
+
+  if (snap.bracket?.matches) {
+    const roomsMap = snap.roomsByMatchId || {};
+    for (const m of Object.values(snap.bracket.matches)) {
+      const rm = roomsMap[m.id];
+      if (rm) {
+        m.roomName = rm.roomName || '';
+        m.roomPass = rm.roomPass || '';
+      }
+      const canCapEdit = Boolean(
+        teamCanDropMap.get(String(m.teamA || '').toLowerCase()) ||
+        teamCanDropMap.get(String(m.teamB || '').toLowerCase())
+      );
+      m.canEditRoom = Boolean(
+        !m.winner &&
+        m.teamA &&
+        m.teamB &&
+        (snap.source !== 'discord' || !snap.adminOnly || canCapEdit)
+      );
+    }
+  }
+
+  const mvpLeaderboard = tournamentEngine.computeTournamentMvpLeaderboard({
+    matchStats: snap.matchStats || [],
+    teams: sanitizedTeams
+  });
+
+  return {
+    ...snap,
+    teams: sanitizedTeams,
+    mvpLeaderboard,
+    inLobbyPlayers: mergedLobbyPlayers,
+    activeLobbyMatchId: mergedAnalysis.activeLobbyMatchId || snap.lobbyPresence?.matchId || null,
+    teamRosters: buildTeamRostersMap(sanitizedTeams, mergedLobbyPlayers),
+    lcuLobbyStatus: {
+      connected: lcuState.connected,
+      inCustomLobby: lcuState.inCustomLobby,
+      inCustomGame: lcuState.inCustomGame,
+      detectedCount: mergedLobbyPlayers.length
+    }
+  };
+}
+
+async function getTournamentStateSnapshot() {
+  const cfg = syncEngine.loadConfig();
+  const dc = cfg.discord || {};
+  if (isDiscordChanReady(dc, dc.channelId)) {
+    const adminOnly = dc.adminOnly !== false;
+    const [{ ownerId, allowed }, msgs] = await Promise.all([
+      resolveAllowedDiscordAdmins(dc),
+      discordClient.fetchChannelMessages(dcTransportOpts(dc), dc.channelId, 100)
+    ]);
+    const parsed = tournamentEngine.parseDiscordMessagesToTournament(msgs, {
+      adminOnly,
+      allowedAdminIds: allowed
+    });
+    return enrichAndSyncTournamentSnapshot(
+      {
+        source: 'discord',
+        discordConfigured: true,
+        adminOnly,
+        ownerId,
+        allowedAdminIds: allowed,
+        ...parsed
+      },
+      cfg,
+      dc
+    );
+  }
+  const local = syncEngine.loadLocalTournament();
+  const localAnnouncement = syncEngine.loadLocalAnnouncement();
+  const hasDiscordCfg = Boolean(discordClient.hasDiscordTransport(dc) && dc.channelId);
+  if (!local.active) {
+    return enrichAndSyncTournamentSnapshot(
+      {
+        source: 'local',
+        discordConfigured: hasDiscordCfg,
+        adminOnly: dc.adminOnly !== false,
+        ownerId: '',
+        allowedAdminIds: [],
+        active: false,
+        size: 8,
+        openedAt: null,
+        openedBy: '',
+        teams: [],
+        drawn: false,
+        started: false,
+        startedAt: null,
+        paused: false,
+        pauseIntervals: [],
+        bracket: null,
+        roomsByMatchId: {},
+        matchStats: [],
+        announcement: localAnnouncement,
+        lobbyPresence: { matchId: null, players: [], updatedAt: null },
+        reportedGameIds: []
+      },
+      cfg,
+      dc
+    );
+  }
+  const bracket = tournamentEngine.buildBracketWithTimers({
+    teams: local.teams || [],
+    size: local.size || 8,
+    drawn: Boolean(local.drawn),
+    drawOrder: local.drawOrder || null,
+    started: Boolean(local.started),
+    startedAtMs: local.startedAtMs || null,
+    results: local.results || []
+  });
+  return enrichAndSyncTournamentSnapshot(
+    {
+      source: 'local',
+      discordConfigured: hasDiscordCfg,
+      adminOnly: dc.adminOnly !== false,
+      ownerId: '',
+      allowedAdminIds: [],
+      active: true,
+      size: local.size || 8,
+      openedAt: local.openedAt,
+      openedBy: local.openedBy || 'Local',
+      teams: local.teams || [],
+      drawn: Boolean(local.drawn),
+      started: Boolean(local.started),
+      startedAt: local.startedAt || null,
+      paused: Boolean(local.paused),
+      pauseIntervals: local.pauseIntervals || [],
+      bracket,
+      roomsByMatchId: local.roomsByMatchId || {},
+      matchStats: local.matchStats || [],
+      announcement: localAnnouncement,
+      lobbyPresence: { matchId: null, players: [], updatedAt: null },
+      reportedGameIds: local.reportedGameIds || []
+    },
+    cfg,
+    dc
+  );
+}
+
+
+const roadToProfileCache = new Map();
+const ROADTO_CACHE_TTL_MS = 2 * 60 * 1000;
+
+async function fetchRoadToProfileCached(riotId, region, forceRefresh = false) {
+  const clean = String(riotId || '').trim().replace(/\s*#\s*/g, '#');
+  const hashIdx = clean.lastIndexOf('#');
+  if (hashIdx <= 0 || hashIdx >= clean.length - 1) {
+    throw new Error(`Formato inválido en "${riotId}". Usa Nombre#TAG.`);
+  }
+  const gameName = clean.slice(0, hashIdx).trim();
+  const tagLine = clean.slice(hashIdx + 1).trim();
+  const normRegion = opgg.normalizeOpggRegion(region || 'LAN');
+  const key = `${normRegion}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
+  const cached = roadToProfileCache.get(key);
+  if (!forceRefresh && cached && Date.now() - cached.at < ROADTO_CACHE_TTL_MS) {
+    return { profile: cached.profile, matches: cached.matches || [] };
+  }
+  const [profile, matches] = await Promise.all([
+    opgg.getSummonerProfileWithHistory(gameName, tagLine, normRegion),
+    opgg.listSummonerMatches(gameName, tagLine, normRegion, 10).catch(() => [])
+  ]);
+  if (!profile || !profile.game_name) {
+    throw new Error(`Cuenta no encontrada en OP.GG (${normRegion}): ${clean}`);
+  }
+  roadToProfileCache.set(key, { at: Date.now(), profile, matches: Array.isArray(matches) ? matches : [] });
+  return { profile, matches: Array.isArray(matches) ? matches : [] };
+}
+
+async function resolveRoadToChannelId(dc) {
+  const explicit = discordClient.normalizeChannelId(dc.roadToChannelId || '');
+  if (explicit) return explicit;
+  if (!discordClient.hasDiscordTransport(dc) || !dc.channelId) return '';
+  try {
+    const ctx = await discordClient.fetchChannelAdminContext(dcTransportOpts(dc), dc.channelId);
+    if (ctx.guildId && dc.botToken) {
+      return await discordClient.findGuildChannelByName(dc.botToken, ctx.guildId, 'road-to');
+    }
+  } catch {
+    // Non-fatal
+  }
+  return '';
+}
+
+async function getRoadToStateSnapshot(forceRefresh = false) {
+  const cfg = syncEngine.loadConfig();
+  const dc = cfg.discord || {};
+  const adminOnly = dc.adminOnly !== false;
+  const roadToChan = dc.enabled && discordClient.hasDiscordTransport(dc) ? await resolveRoadToChannelId(dc) : '';
+
+  let rawState;
+  let source = 'local';
+  if (isDiscordChanReady(dc, roadToChan)) {
+    source = 'discord';
+    const [{ allowed }, msgs] = await Promise.all([
+      resolveAllowedDiscordAdmins(dc),
+      discordClient.fetchChannelMessages(dcTransportOpts(dc), roadToChan, 100)
+    ]);
+    rawState = roadToEngine.parseDiscordMessagesToRoadTo(msgs, {
+      adminOnly,
+      allowedAdminIds: allowed
+    });
+  } else {
+    rawState = syncEngine.loadLocalRoadTo();
+  }
+
+  const myOwnerKey = syncEngine.getClientOwnerKey();
+  const enriched = [];
+  if (rawState.active && Array.isArray(rawState.participants) && rawState.participants.length) {
+    const results = await Promise.all(
+      rawState.participants.map(async (p) => {
+        const canDrop = Boolean(p.ownerKey && String(p.ownerKey).toLowerCase() === String(myOwnerKey).toLowerCase());
+        try {
+          const { profile: prof, matches } = await fetchRoadToProfileCached(p.riotId, p.region || 'LAN', forceRefresh);
+          const analysis = roadToEngine.analyzeSummonerRoadToPlacement(prof, p.categoryId || null, matches, {
+            jumpsCount: p.jumpsCount || 0
+          });
+          return {
+            ...analysis,
+            region: opgg.normalizeOpggRegion(p.region || 'LAN'),
+            registeredAt: p.registeredAt || null,
+            canDrop
+          };
+        } catch {
+          const fallbackCat = roadToEngine.ROAD_CATEGORIES.find((c) => c.id === p.categoryId) || roadToEngine.ROAD_CATEGORIES[0];
+          return {
+            riotId: p.riotId,
+            region: opgg.normalizeOpggRegion(p.region || 'LAN'),
+            profileIcon: '',
+            currentRankLabel: 'Verificando OP.GG...',
+            previousSummary: p.peakLabel || 'Sin historial',
+            categoryId: fallbackCat.id,
+            categoryName: fallbackCat.name,
+            targetLabel: fallbackCat.targetLabel,
+            progressPct: 0,
+            rankScore: 0,
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+            reachedCap: false,
+            canJump: false,
+            nextCategoryId: fallbackCat.nextId,
+            nextCategoryName: fallbackCat.nextName,
+            streak: { type: null, count: 0 },
+            jumpsCount: p.jumpsCount || 0,
+            badges: roadToEngine.buildRoadToBadges({ categoryId: fallbackCat.id, jumpsCount: p.jumpsCount || 0 }),
+            canDrop
+          };
+        }
+      })
+    );
+    enriched.push(...results);
+  }
+
+  const leaderboardByCategory = {};
+  for (const cat of roadToEngine.ROAD_CATEGORIES) {
+    const sorted = enriched
+      .filter((e) => e.categoryId === cat.id)
+      .sort((a, b) => (b.rankScore - a.rankScore) || (b.winRate - a.winRate));
+    sorted.forEach((p, idx) => {
+      p.badges = roadToEngine.buildRoadToBadges({
+        categoryId: p.categoryId,
+        reachedCap: p.reachedCap,
+        winRate: p.winRate,
+        wins: p.wins,
+        losses: p.losses,
+        streak: p.streak,
+        jumpsCount: p.jumpsCount || 0,
+        rankPos: idx === 0 && sorted.length > 0 ? 1 : idx + 1
+      });
+    });
+    leaderboardByCategory[cat.id] = sorted;
+  }
+
+  return {
+    source,
+    roadToChannelId: roadToChan,
+    discordConfigured: Boolean(discordClient.hasDiscordTransport(dc) && roadToChan),
+    adminOnly,
+    active: Boolean(rawState.active),
+    title: rawState.title || '',
+    openedAt: rawState.openedAt || null,
+    openedBy: rawState.openedBy || '',
+    announcement: source === 'discord' ? (rawState.announcement || null) : syncEngine.loadLocalAnnouncement(),
+    categories: roadToEngine.ROAD_CATEGORIES,
+    leaderboardByCategory,
+    participants: enriched
+  };
+}
+
+
 async function handleApi(req, res, urlObj) {
   const pathname = urlObj.pathname;
 
@@ -1045,409 +1601,6 @@ async function handleApi(req, res, urlObj) {
     return sendJson(res, 200, { running: false, manualPinned: false });
   }
 
-  // ==================== TORNEO BLITZ (DISCORD + DOUBLE ELIMINATION) ====================
-  let lastPublishedLobbySig = '';
-  let lastPublishedLobbyAt = 0;
-  const reportedAutoGameIds = new Set();
-  const autoPostingGameIds = new Set();
-  const opggVerifiedSummoners = new Map();
-  const OPGG_VERIFY_TTL_MS = 30 * 60 * 1000;
-
-  async function verifyPlayersExistOnOpgg(players, region) {
-    const cleanRegion = opgg.normalizeOpggRegion(region || 'LAN');
-    const canonicalPlayers = [];
-    const invalidPlayers = [];
-
-    const checks = await Promise.all(
-      players.map(async (rawPlayer) => {
-        const clean = String(rawPlayer || '').trim().replace(/\s*#\s*/g, '#');
-        const hashIdx = clean.lastIndexOf('#');
-        if (hashIdx <= 0 || hashIdx >= clean.length - 1) {
-          return { ok: false, raw: rawPlayer, reason: 'formato (usa Nombre#TAG)' };
-        }
-        const gameName = clean.slice(0, hashIdx).trim();
-        const tagLine = clean.slice(hashIdx + 1).trim();
-        const cacheKey = `${cleanRegion}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
-        const cached = opggVerifiedSummoners.get(cacheKey);
-        if (cached && Date.now() - cached.at < OPGG_VERIFY_TTL_MS) {
-          return { ok: true, canonical: cached.canonical };
-        }
-        try {
-          const prof = await opgg.getSummonerProfile(gameName, tagLine, cleanRegion);
-          if (!prof || !prof.game_name) {
-            return { ok: false, raw: clean, reason: `no encontrado en OP.GG (${cleanRegion})` };
-          }
-          const canonical = `${prof.game_name}#${prof.tagline || tagLine}`;
-          opggVerifiedSummoners.set(cacheKey, { at: Date.now(), canonical });
-          return { ok: true, canonical };
-        } catch {
-          return { ok: false, raw: clean, reason: `no existe en OP.GG (${cleanRegion})` };
-        }
-      })
-    );
-
-    for (const c of checks) {
-      if (c.ok) canonicalPlayers.push(c.canonical);
-      else invalidPlayers.push(`${c.raw} (${c.reason})`);
-    }
-
-    if (invalidPlayers.length) {
-      throw new Error(
-        `No se pudo registrar el equipo. Verifica en OP.GG (${cleanRegion}): ${invalidPlayers.join(' · ')}`
-      );
-    }
-    return canonicalPlayers;
-  }
-
-  function isDiscordChanReady(dc, chanId) {
-    return Boolean(dc?.enabled && discordClient.hasDiscordTransport(dc) && chanId);
-  }
-
-  function dcTransportOpts(dc) {
-    return { bridgeUrl: dc?.bridgeUrl || '', botToken: dc?.botToken || '' };
-  }
-
-  function postDiscordChat(dc, channelId, content) {
-    return discordClient.sendChannelMessage({
-      bridgeUrl: dc?.bridgeUrl || '',
-      botToken: dc?.botToken || '',
-      channelId,
-      webhookUrl: dc?.webhookUrl || '',
-      content
-    });
-  }
-
-  async function resolveAllowedDiscordAdmins(dc) {
-    const manual = String(dc.adminIds || '')
-      .split(/[,;\s]+/)
-      .map((s) => s.trim())
-      .filter((s) => /^\d+$/.test(s));
-    let ownerId = '';
-    if (discordClient.hasDiscordTransport(dc) && dc.channelId) {
-      try {
-        const ctx = await discordClient.fetchChannelAdminContext(dcTransportOpts(dc), dc.channelId);
-        ownerId = ctx.ownerId || '';
-      } catch {
-        ownerId = '';
-      }
-    }
-    const allowed = [...new Set([ownerId, ...manual].filter(Boolean))];
-    return { ownerId, allowed };
-  }
-
-  function buildTeamRostersMap(teams, inLobbyPlayers) {
-    const map = {};
-    for (const t of teams || []) {
-      map[t.name] = (t.players || []).map((p) => ({
-        name: p,
-        inLobby: tournamentEngine.isPlayerInList(p, inLobbyPlayers)
-      }));
-    }
-    return map;
-  }
-
-  async function enrichAndSyncTournamentSnapshot(snap, cfg, dc) {
-    if (!snap.active) {
-      lastPublishedLobbySig = '';
-      return {
-        ...snap,
-        inLobbyPlayers: [],
-        activeLobbyMatchId: null,
-        teamRosters: {},
-        lcuLobbyStatus: { connected: false, inCustomLobby: false, inCustomGame: false, detectedCount: 0 }
-      };
-    }
-
-    let lcuState = {
-      connected: false,
-      inCustomLobby: false,
-      inCustomGame: false,
-      isLobbyLeader: false,
-      lobbyPlayers: [],
-      recentCustomGames: []
-    };
-    try {
-      lcuState = await lcuWatcher.readLcuCustomLobbyAndHistory({
-        enabled: cfg.lcuEnabled !== false,
-        customLockfilePath: cfg.lcuLockfilePath || ''
-      });
-    } catch {
-      // Non-fatal
-    }
-
-    const discordLobbyPlayers = Array.isArray(snap.lobbyPresence?.players) ? snap.lobbyPresence.players : [];
-    const localLobbyAnalysis = tournamentEngine.matchLobbyAndCustomGames({
-      bracket: snap.bracket,
-      teams: snap.teams,
-      openedAt: snap.openedAt,
-      lobbyPlayers: lcuState.lobbyPlayers || [],
-      customGames: lcuState.recentCustomGames || [],
-      reportedGameIds: [...(snap.reportedGameIds || []), ...reportedAutoGameIds]
-    });
-
-    // 1. Auto-sync live Custom Lobby players to Discord via !SALA (1 person in lobby is enough!)
-    const localMatched = localLobbyAnalysis.matchedTournamentLobbyPlayers || [];
-    const localSigList = localMatched.map((s) => s.toLowerCase()).sort().join(',');
-    const discordSigList = discordLobbyPlayers.map((s) => s.toLowerCase()).sort().join(',');
-
-    if (isDiscordChanReady(dc, dc.channelId)) {
-      const now = Date.now();
-      const discordSalaAge = snap.lobbyPresence?.updatedAt
-        ? now - new Date(snap.lobbyPresence.updatedAt).getTime()
-        : Number.MAX_SAFE_INTEGER;
-
-      if (
-        localMatched.length > 0 &&
-        localSigList !== discordSigList &&
-        localSigList !== lastPublishedLobbySig &&
-        now - lastPublishedLobbyAt > 4500 &&
-        (lcuState.isLobbyLeader || discordSalaAge > 7000)
-      ) {
-        lastPublishedLobbySig = localSigList;
-        lastPublishedLobbyAt = now;
-        try {
-          const matchTag = localLobbyAnalysis.activeLobbyMatchId || 'SALA';
-          await postDiscordChat(dc, dc.channelId, `!SALA ${matchTag} | ${localMatched.join(', ')}`);
-        } catch {
-          // Non-fatal; local lobby indicator still works
-        }
-      } else if (
-        lastPublishedLobbySig &&
-        !lcuState.inCustomLobby &&
-        !lcuState.inCustomGame &&
-        discordLobbyPlayers.length > 0 &&
-        now - lastPublishedLobbyAt > 4500
-      ) {
-        lastPublishedLobbySig = '';
-        lastPublishedLobbyAt = now;
-        try {
-          await postDiscordChat(dc, dc.channelId, '!SALA CLEAR');
-        } catch {
-          // Non-fatal
-        }
-      }
-    }
-
-    // 2. Auto-detect finished Custom Game in LoL Match History & post !BOTGANADOR
-    const det = localLobbyAnalysis.detectedResult;
-    if (det && !reportedAutoGameIds.has(det.gameId) && !autoPostingGameIds.has(det.gameId)) {
-      autoPostingGameIds.add(det.gameId);
-      try {
-        if (isDiscordChanReady(dc, dc.channelId)) {
-          await postDiscordChat(dc, dc.channelId, `!BOTGANADOR ${det.matchId} ${det.winnerName} | game:${det.gameId}`);
-          if (Array.isArray(det.playerStats) && det.playerStats.length) {
-            await postDiscordChat(
-              dc,
-              dc.channelId,
-              tournamentEngine.encodeCompactMatchStats(
-                det.matchId,
-                det.gameId,
-                det.gameDuration || 0,
-                det.playerStats
-              )
-            );
-          }
-        } else {
-          const local = syncEngine.loadLocalTournament();
-          if (local.active) {
-            local.results = [...(local.results || []), { matchId: det.matchId, winnerName: det.winnerName, atMs: Date.now() }];
-            local.reportedGameIds = [...new Set([...(local.reportedGameIds || []), det.gameId])];
-            if (Array.isArray(det.playerStats) && det.playerStats.length) {
-              local.matchStats = [
-                ...(local.matchStats || []),
-                {
-                  matchId: det.matchId,
-                  gameId: det.gameId,
-                  durationSec: det.gameDuration || 0,
-                  players: det.playerStats,
-                  at: new Date().toISOString()
-                }
-              ];
-            }
-            syncEngine.saveLocalTournament(local);
-          }
-        }
-        reportedAutoGameIds.add(det.gameId);
-        tournamentEngine.applyMatchResult(snap.bracket, det.matchId, det.winnerName);
-        if (Array.isArray(det.playerStats) && det.playerStats.length) {
-          snap.matchStats = [
-            ...(snap.matchStats || []),
-            {
-              matchId: det.matchId,
-              gameId: det.gameId,
-              durationSec: det.gameDuration || 0,
-              players: det.playerStats
-            }
-          ];
-        }
-      } catch {
-        // Non-fatal
-      } finally {
-        autoPostingGameIds.delete(det.gameId);
-      }
-    }
-
-    // Merge Discord !SALA + local LCU lobby players so UI always stays fresh green/red
-    const mergedLobbyMap = new Map();
-    for (const p of [...discordLobbyPlayers, ...localMatched]) {
-      const k = tournamentEngine.normalizePlayerTag(p);
-      if (k && !mergedLobbyMap.has(k)) mergedLobbyMap.set(k, p);
-    }
-    const mergedLobbyPlayers = [...mergedLobbyMap.values()];
-    const mergedAnalysis = tournamentEngine.matchLobbyAndCustomGames({
-      bracket: snap.bracket,
-      teams: snap.teams,
-      openedAt: snap.openedAt,
-      lobbyPlayers: mergedLobbyPlayers
-    });
-
-    const myOwnerKey = syncEngine.getClientOwnerKey();
-    const teamCanDropMap = new Map();
-    const sanitizedTeams = (snap.teams || []).map((t) => {
-      const { ownerKey, ...rest } = t;
-      const canDrop = Boolean(ownerKey && String(ownerKey).toLowerCase() === String(myOwnerKey).toLowerCase());
-      teamCanDropMap.set(String(t.name || '').toLowerCase(), canDrop);
-      return { ...rest, canDrop };
-    });
-
-    if (snap.bracket?.matches) {
-      const roomsMap = snap.roomsByMatchId || {};
-      for (const m of Object.values(snap.bracket.matches)) {
-        const rm = roomsMap[m.id];
-        if (rm) {
-          m.roomName = rm.roomName || '';
-          m.roomPass = rm.roomPass || '';
-        }
-        const canCapEdit = Boolean(
-          teamCanDropMap.get(String(m.teamA || '').toLowerCase()) ||
-          teamCanDropMap.get(String(m.teamB || '').toLowerCase())
-        );
-        m.canEditRoom = Boolean(
-          !m.winner &&
-          m.teamA &&
-          m.teamB &&
-          (snap.source !== 'discord' || !snap.adminOnly || canCapEdit)
-        );
-      }
-    }
-
-    const mvpLeaderboard = tournamentEngine.computeTournamentMvpLeaderboard({
-      matchStats: snap.matchStats || [],
-      teams: sanitizedTeams
-    });
-
-    return {
-      ...snap,
-      teams: sanitizedTeams,
-      mvpLeaderboard,
-      inLobbyPlayers: mergedLobbyPlayers,
-      activeLobbyMatchId: mergedAnalysis.activeLobbyMatchId || snap.lobbyPresence?.matchId || null,
-      teamRosters: buildTeamRostersMap(sanitizedTeams, mergedLobbyPlayers),
-      lcuLobbyStatus: {
-        connected: lcuState.connected,
-        inCustomLobby: lcuState.inCustomLobby,
-        inCustomGame: lcuState.inCustomGame,
-        detectedCount: mergedLobbyPlayers.length
-      }
-    };
-  }
-
-  async function getTournamentStateSnapshot() {
-    const cfg = syncEngine.loadConfig();
-    const dc = cfg.discord || {};
-    if (isDiscordChanReady(dc, dc.channelId)) {
-      const adminOnly = dc.adminOnly !== false;
-      const [{ ownerId, allowed }, msgs] = await Promise.all([
-        resolveAllowedDiscordAdmins(dc),
-        discordClient.fetchChannelMessages(dcTransportOpts(dc), dc.channelId, 100)
-      ]);
-      const parsed = tournamentEngine.parseDiscordMessagesToTournament(msgs, {
-        adminOnly,
-        allowedAdminIds: allowed
-      });
-      return enrichAndSyncTournamentSnapshot(
-        {
-          source: 'discord',
-          discordConfigured: true,
-          adminOnly,
-          ownerId,
-          allowedAdminIds: allowed,
-          ...parsed
-        },
-        cfg,
-        dc
-      );
-    }
-    const local = syncEngine.loadLocalTournament();
-    const localAnnouncement = syncEngine.loadLocalAnnouncement();
-    const hasDiscordCfg = Boolean(discordClient.hasDiscordTransport(dc) && dc.channelId);
-    if (!local.active) {
-      return enrichAndSyncTournamentSnapshot(
-        {
-          source: 'local',
-          discordConfigured: hasDiscordCfg,
-          adminOnly: dc.adminOnly !== false,
-          ownerId: '',
-          allowedAdminIds: [],
-          active: false,
-          size: 8,
-          openedAt: null,
-          openedBy: '',
-          teams: [],
-          drawn: false,
-          started: false,
-          startedAt: null,
-          paused: false,
-          pauseIntervals: [],
-          bracket: null,
-          roomsByMatchId: {},
-          matchStats: [],
-          announcement: localAnnouncement,
-          lobbyPresence: { matchId: null, players: [], updatedAt: null },
-          reportedGameIds: []
-        },
-        cfg,
-        dc
-      );
-    }
-    const bracket = tournamentEngine.buildBracketWithTimers({
-      teams: local.teams || [],
-      size: local.size || 8,
-      drawn: Boolean(local.drawn),
-      drawOrder: local.drawOrder || null,
-      started: Boolean(local.started),
-      startedAtMs: local.startedAtMs || null,
-      results: local.results || []
-    });
-    return enrichAndSyncTournamentSnapshot(
-      {
-        source: 'local',
-        discordConfigured: hasDiscordCfg,
-        adminOnly: dc.adminOnly !== false,
-        ownerId: '',
-        allowedAdminIds: [],
-        active: true,
-        size: local.size || 8,
-        openedAt: local.openedAt,
-        openedBy: local.openedBy || 'Local',
-        teams: local.teams || [],
-        drawn: Boolean(local.drawn),
-        started: Boolean(local.started),
-        startedAt: local.startedAt || null,
-        paused: Boolean(local.paused),
-        pauseIntervals: local.pauseIntervals || [],
-        bracket,
-        roomsByMatchId: local.roomsByMatchId || {},
-        matchStats: local.matchStats || [],
-        announcement: localAnnouncement,
-        lobbyPresence: { matchId: null, players: [], updatedAt: null },
-        reportedGameIds: local.reportedGameIds || []
-      },
-      cfg,
-      dc
-    );
-  }
-
   if (req.method === 'GET' && pathname === '/api/tournament/state') {
     const snap = await getTournamentStateSnapshot();
     return sendJson(res, 200, snap);
@@ -1827,155 +1980,6 @@ async function handleApi(req, res, urlObj) {
   }
 
   // ==================== ROAD TO LADDER (DISCORD + OP.GG SEASONS) ====================
-  const roadToProfileCache = new Map();
-  const ROADTO_CACHE_TTL_MS = 2 * 60 * 1000;
-
-  async function fetchRoadToProfileCached(riotId, region, forceRefresh = false) {
-    const clean = String(riotId || '').trim().replace(/\s*#\s*/g, '#');
-    const hashIdx = clean.lastIndexOf('#');
-    if (hashIdx <= 0 || hashIdx >= clean.length - 1) {
-      throw new Error(`Formato inválido en "${riotId}". Usa Nombre#TAG.`);
-    }
-    const gameName = clean.slice(0, hashIdx).trim();
-    const tagLine = clean.slice(hashIdx + 1).trim();
-    const normRegion = opgg.normalizeOpggRegion(region || 'LAN');
-    const key = `${normRegion}:${gameName.toLowerCase()}#${tagLine.toLowerCase()}`;
-    const cached = roadToProfileCache.get(key);
-    if (!forceRefresh && cached && Date.now() - cached.at < ROADTO_CACHE_TTL_MS) {
-      return { profile: cached.profile, matches: cached.matches || [] };
-    }
-    const [profile, matches] = await Promise.all([
-      opgg.getSummonerProfileWithHistory(gameName, tagLine, normRegion),
-      opgg.listSummonerMatches(gameName, tagLine, normRegion, 10).catch(() => [])
-    ]);
-    if (!profile || !profile.game_name) {
-      throw new Error(`Cuenta no encontrada en OP.GG (${normRegion}): ${clean}`);
-    }
-    roadToProfileCache.set(key, { at: Date.now(), profile, matches: Array.isArray(matches) ? matches : [] });
-    return { profile, matches: Array.isArray(matches) ? matches : [] };
-  }
-
-  async function resolveRoadToChannelId(dc) {
-    const explicit = discordClient.normalizeChannelId(dc.roadToChannelId || '');
-    if (explicit) return explicit;
-    if (!discordClient.hasDiscordTransport(dc) || !dc.channelId) return '';
-    try {
-      const ctx = await discordClient.fetchChannelAdminContext(dcTransportOpts(dc), dc.channelId);
-      if (ctx.guildId && dc.botToken) {
-        return await discordClient.findGuildChannelByName(dc.botToken, ctx.guildId, 'road-to');
-      }
-    } catch {
-      // Non-fatal
-    }
-    return '';
-  }
-
-  async function getRoadToStateSnapshot(forceRefresh = false) {
-    const cfg = syncEngine.loadConfig();
-    const dc = cfg.discord || {};
-    const adminOnly = dc.adminOnly !== false;
-    const roadToChan = dc.enabled && discordClient.hasDiscordTransport(dc) ? await resolveRoadToChannelId(dc) : '';
-
-    let rawState;
-    let source = 'local';
-    if (isDiscordChanReady(dc, roadToChan)) {
-      source = 'discord';
-      const [{ allowed }, msgs] = await Promise.all([
-        resolveAllowedDiscordAdmins(dc),
-        discordClient.fetchChannelMessages(dcTransportOpts(dc), roadToChan, 100)
-      ]);
-      rawState = roadToEngine.parseDiscordMessagesToRoadTo(msgs, {
-        adminOnly,
-        allowedAdminIds: allowed
-      });
-    } else {
-      rawState = syncEngine.loadLocalRoadTo();
-    }
-
-    const myOwnerKey = syncEngine.getClientOwnerKey();
-    const enriched = [];
-    if (rawState.active && Array.isArray(rawState.participants) && rawState.participants.length) {
-      const results = await Promise.all(
-        rawState.participants.map(async (p) => {
-          const canDrop = Boolean(p.ownerKey && String(p.ownerKey).toLowerCase() === String(myOwnerKey).toLowerCase());
-          try {
-            const { profile: prof, matches } = await fetchRoadToProfileCached(p.riotId, p.region || 'LAN', forceRefresh);
-            const analysis = roadToEngine.analyzeSummonerRoadToPlacement(prof, p.categoryId || null, matches, {
-              jumpsCount: p.jumpsCount || 0
-            });
-            return {
-              ...analysis,
-              region: opgg.normalizeOpggRegion(p.region || 'LAN'),
-              registeredAt: p.registeredAt || null,
-              canDrop
-            };
-          } catch {
-            const fallbackCat = roadToEngine.ROAD_CATEGORIES.find((c) => c.id === p.categoryId) || roadToEngine.ROAD_CATEGORIES[0];
-            return {
-              riotId: p.riotId,
-              region: opgg.normalizeOpggRegion(p.region || 'LAN'),
-              profileIcon: '',
-              currentRankLabel: 'Verificando OP.GG...',
-              previousSummary: p.peakLabel || 'Sin historial',
-              categoryId: fallbackCat.id,
-              categoryName: fallbackCat.name,
-              targetLabel: fallbackCat.targetLabel,
-              progressPct: 0,
-              rankScore: 0,
-              wins: 0,
-              losses: 0,
-              winRate: 0,
-              reachedCap: false,
-              canJump: false,
-              nextCategoryId: fallbackCat.nextId,
-              nextCategoryName: fallbackCat.nextName,
-              streak: { type: null, count: 0 },
-              jumpsCount: p.jumpsCount || 0,
-              badges: roadToEngine.buildRoadToBadges({ categoryId: fallbackCat.id, jumpsCount: p.jumpsCount || 0 }),
-              canDrop
-            };
-          }
-        })
-      );
-      enriched.push(...results);
-    }
-
-    const leaderboardByCategory = {};
-    for (const cat of roadToEngine.ROAD_CATEGORIES) {
-      const sorted = enriched
-        .filter((e) => e.categoryId === cat.id)
-        .sort((a, b) => (b.rankScore - a.rankScore) || (b.winRate - a.winRate));
-      sorted.forEach((p, idx) => {
-        p.badges = roadToEngine.buildRoadToBadges({
-          categoryId: p.categoryId,
-          reachedCap: p.reachedCap,
-          winRate: p.winRate,
-          wins: p.wins,
-          losses: p.losses,
-          streak: p.streak,
-          jumpsCount: p.jumpsCount || 0,
-          rankPos: idx === 0 && sorted.length > 0 ? 1 : idx + 1
-        });
-      });
-      leaderboardByCategory[cat.id] = sorted;
-    }
-
-    return {
-      source,
-      roadToChannelId: roadToChan,
-      discordConfigured: Boolean(discordClient.hasDiscordTransport(dc) && roadToChan),
-      adminOnly,
-      active: Boolean(rawState.active),
-      title: rawState.title || '',
-      openedAt: rawState.openedAt || null,
-      openedBy: rawState.openedBy || '',
-      announcement: source === 'discord' ? (rawState.announcement || null) : syncEngine.loadLocalAnnouncement(),
-      categories: roadToEngine.ROAD_CATEGORIES,
-      leaderboardByCategory,
-      participants: enriched
-    };
-  }
-
   if (req.method === 'GET' && pathname === '/api/roadto/state') {
     const force = urlObj.searchParams.get('refresh') === '1';
     return sendJson(res, 200, await getRoadToStateSnapshot(force));
